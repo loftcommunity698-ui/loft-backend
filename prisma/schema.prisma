@@ -422,6 +422,8 @@ model JobApplication {
   
   // Relations
   interview       Interview?
+
+  @@index([userId])
 }
 
 model Interview {
@@ -592,6 +594,8 @@ model Notification {
   readAt          DateTime?
   
   createdAt       DateTime        @default(now())
+
+  @@index([userId])
 }
 
 enum NotificationType {
@@ -758,6 +762,9 @@ model Message {
   sender      User      @relation("SentMessages", fields: [senderId], references: [clerkId])
   receiver    User      @relation("ReceivedMessages", fields: [receiverId], references: [clerkId])
   job         Job?      @relation(fields: [jobId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
 }
 
 // ============================================
