@@ -1,8 +1,12 @@
 import express from "express"
 import cors from "cors"
+import helmet from "helmet"
 import cookieParser from "cookie-parser"
 import env from "./config/env"
 import { errorHandler } from "./middleware/error-handler"
+import { createLogger } from "./lib/logger"
+
+const log = createLogger("server")
 
 import authRoutes from "./routes/auth"
 import healthRoutes from "./routes/health"
@@ -28,6 +32,7 @@ app.use(cors({
   origin: env.frontendUrl,
   credentials: true,
 }))
+app.use(helmet())
 app.use(cookieParser())
 app.use(express.json({ limit: '10mb' }))
 
@@ -54,8 +59,23 @@ if (env.isDev) {
 
 app.use(errorHandler)
 
-app.listen(env.port, () => {
-  console.log(`Loft API running on port ${env.port}`)
+const server = app.listen(env.port, () => {
+  log.info(`Loft API running on port ${env.port}`)
 })
+
+const shutdown = () => {
+  log.info("Shutting down gracefully...")
+  server.close(() => {
+    log.info("Server closed")
+    process.exit(0)
+  })
+  setTimeout(() => {
+    log.error("Forced shutdown after timeout")
+    process.exit(1)
+  }, 10000)
+}
+
+process.on("SIGTERM", shutdown)
+process.on("SIGINT", shutdown)
 
 export default app
