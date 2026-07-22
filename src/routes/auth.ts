@@ -103,6 +103,12 @@ router.post("/register", async (req: Request, res: Response) => {
 
 // POST /api/auth/login
 router.post("/login", async (req: Request, res: Response) => {
+  const ip = req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown"
+  const { success } = await rateLimit(`login:${ip}`, 5, 60000)
+  if (!success) {
+    return res.status(429).json({ success: false, message: "Too many requests. Try again later." })
+  }
+
   try {
     const { email, password } = req.body
     if (!email || !password) {
