@@ -19,6 +19,7 @@ import paymentRoutes from "./routes/payment"
 import contactRoutes from "./routes/contact"
 import uploadthingRoutes from "./routes/uploadthing"
 import sseRoutes from "./routes/sse"
+import statsRoutes from "./routes/stats"
 import testRoutes from "./routes/test"
 
 const app = express()
@@ -45,6 +46,7 @@ app.use("/api/payment", paymentRoutes)
 app.use("/api/contact", contactRoutes)
 app.use("/api/uploadthing", uploadthingRoutes)
 app.use("/api/sse", sseRoutes)
+app.use("/api/stats", statsRoutes)
 
 if (env.isDev) {
   app.use("/api/test", testRoutes)
