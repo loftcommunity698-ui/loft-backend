@@ -47,6 +47,15 @@ export async function sendEmail({ to, subject, html }: EmailOptions) {
   }
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 const baseUrl = env.frontendUrl || "http://localhost:3000"
 
 export const emailTemplates = {
@@ -58,7 +67,7 @@ export const emailTemplates = {
       <html>
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">Application Submitted!</h1>
-          <p>Your application for <strong>${jobTitle}</strong> at <strong>${companyName}</strong> has been submitted successfully.</p>
+          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> has been submitted successfully.</p>
           <p>You can track your application status in your LoftCommunity dashboard.</p>
           <a href="${baseUrl}/dashboard/applications" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
@@ -77,7 +86,7 @@ export const emailTemplates = {
       <html>
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">Status Update</h1>
-          <p>Your application for <strong>${jobTitle}</strong> at <strong>${companyName}</strong> is now <strong>${status}</strong>.</p>
+          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> is now <strong>${escapeHtml(status)}</strong>.</p>
           <p>Log in to your dashboard to see more details.</p>
           <a href="${baseUrl}/dashboard/applications" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
@@ -96,7 +105,7 @@ export const emailTemplates = {
       <html>
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">New Message</h1>
-          <p>You have received a new message from <strong>${senderName}</strong>.</p>
+          <p>You have received a new message from <strong>${escapeHtml(senderName)}</strong>.</p>
           <p>Log in to LoftCommunity to view and respond to the message.</p>
           <a href="${baseUrl}/dashboard/messages" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
@@ -115,7 +124,7 @@ export const emailTemplates = {
       <html>
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">New Applicant</h1>
-          <p><strong>${candidateName}</strong> has applied for <strong>${jobTitle}</strong>.</p>
+          <p><strong>${escapeHtml(candidateName)}</strong> has applied for <strong>${escapeHtml(jobTitle)}</strong>.</p>
           <p>Review their profile in your employer dashboard.</p>
           <a href="${baseUrl}/employer/dashboard" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
