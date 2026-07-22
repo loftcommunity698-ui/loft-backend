@@ -57,7 +57,7 @@ function toAuthUser(dbUser: {
     name: dbUser.name || undefined,
     profileImage: dbUser.profileImage || undefined,
     role: dbUser.isEmployer ? "employer" : "job_seeker",
-    isVerified: dbUser.emailVerified !== null,
+    isVerified: dbUser.emailVerified === true,
     tier: dbUser.tier,
     credits: dbUser.credits,
     createdAt: dbUser.createdAt,
@@ -161,7 +161,7 @@ export async function requestPasswordReset(email: string): Promise<AuthResponse>
 
   log.info("Password reset token generated", { email })
 
-  const resetUrl = `${env.frontendUrl}/auth?resetToken=${token}`
+  const resetUrl = `${env.frontendUrl}/forgot-password?token=${token}`
   await sendEmail({
     to: email,
     subject: "Reset your LoftCommunity password",

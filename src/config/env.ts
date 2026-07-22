@@ -3,7 +3,7 @@ const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   isDev: (process.env.NODE_ENV || "development") === "development",
   databaseUrl: process.env.DATABASE_URL || "",
-  jwtSecret: process.env.JWT_SECRET || "dev-secret-change-in-production",
+  jwtSecret: process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? (() => { throw new Error("JWT_SECRET must be set in production") })() : "dev-secret-change-in-production"),
   frontendUrl: process.env.FRONTEND_URL || process.env.NEXTAUTH_URL || "http://localhost:3000",
   resendApiKey: process.env.RESEND_API_KEY || "",
   supportEmail: process.env.SUPPORT_EMAIL || "support@loftcommunity.com",
