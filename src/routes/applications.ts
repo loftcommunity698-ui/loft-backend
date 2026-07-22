@@ -62,6 +62,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
 // GET /api/applications/:id - Get single application
 router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userEmail = req.user!.email
     const applicationId = parseInt(req.params.id)
     const application = await db.jobApplication.findUnique({
       where: { id: applicationId },
@@ -72,6 +73,14 @@ router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
       },
     })
     if (!application) return res.status(404).json({ error: "Application not found" })
+
+    const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
+    if (!user) return res.status(403).json({ error: "Not authorized" })
+
+    const isApplicant = application.userId === user.clerkId
+    const isEmployer = application.job.employerId === user.clerkId
+    const isCompanyMember = user.companyMemberships.length > 0
+    if (!isApplicant && !isEmployer && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
 
     return res.json({
       id: application.id, jobId: application.jobId, userId: application.userId,
@@ -220,7 +229,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
 
     const notificationType = status === "REJECTED" ? "APPLICATION_REJECTED" : "APPLICATION_SHORTLISTED"
     await db.notification.create({
-      data: { userId: application.userId, title: "Application Status Update", message: `Your application for ${application.job.title} is now ${status.toLowerCase()}`, type: notificationType, link: `/dashboard/applications/${application.id}` },
+      data: { userId: application.userId, title: "Application Status Update", message: `Your application for ${application.job.title} is now ${status.toLowerCase()}`, type: notificationType, link: `/applications/${application.id}` },
     })
 
     const companyName = application.job.employer?.companyName || "the company"
