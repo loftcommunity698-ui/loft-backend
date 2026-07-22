@@ -342,7 +342,7 @@ router.post("/verify-email", async (req: Request, res: Response) => {
     data: { identifier: email, token, expires },
   })
 
-  const verificationUrl = `${env.frontendUrl}/api/auth/verify-email?token=${token}`
+  const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`
 
   try {
     await sendEmail({
