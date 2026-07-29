@@ -111,6 +111,8 @@ model User {
   
   // Auth
   refreshTokens   RefreshToken[]
+  roleBindings    RoleBinding[]
+  auditEvents     AuditEvent[]
 }
 
 // ============================================
@@ -846,4 +848,59 @@ model CacheEntry {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+// ============================================
+// RBAC
+// ============================================
+
+model Role {
+  id           String   @id // kebab-case, e.g., "admin", "employer", "seeker"
+  name         String   @unique
+  description  String   @default("")
+  capabilities Json     @default("[]") // JSON array of strings like ["job:create", "job:read"]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bindings RoleBinding[]
+
+  @@map("roles")
+}
+
+model RoleBinding {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [clerkId], onDelete: Cascade)
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  contextType String    @default("global") // "global" or "project"
+  contextId   String? // optional project ID for project-scoped bindings
+  grantedBy   String? // user ID who granted this binding
+  grantedAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  status      String    @default("active") // "active" | "revoked" | "expired"
+
+  @@unique([userId, roleId, contextType, contextId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("role_bindings")
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String? // user ID who performed the action
+  action     String // e.g., "job:create", "role:bind", "user:login"
+  resource   String // e.g., "job", "role", "user"
+  resourceId String? // ID of the affected resource
+  metadata   Json     @default("{}") // additional context
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  User       User?    @relation(fields: [userId], references: [clerkId])
+  userId     String?
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_events")
 }
