@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express"
 import crypto from "crypto"
 import bcrypt from "bcryptjs"
 import { db } from "../lib/db"
-import { signToken, createCookie, clearCookie } from "../lib/jwt"
+import { signAccessToken, createAccessCookie, clearAccessCookie, createRefreshCookie, clearRefreshCookie, signRefreshToken } from "../lib/jwt"
 import { requireAuth, optionalAuth } from "../middleware/auth"
 import { rateLimit } from "../lib/rate-limit"
 import {
@@ -21,6 +21,34 @@ import type { AuthenticatedRequest, RegisterInput, LoginInput, OAuthInput } from
 
 const router = Router()
 const log = createLogger("auth")
+
+const REFRESH_TOKEN_DAYS = 7
+
+async function setAuthCookies(userId: string, res: Response): Promise<void> {
+  const user = await db.user.findUnique({ where: { id: parseInt(userId) } })
+  if (!user) return
+
+  const accessToken = signAccessToken({
+    userId: user.id.toString(),
+    clerkId: user.clerkId,
+    email: user.email,
+    isEmployer: user.isEmployer,
+    isApplicant: user.isApplicant,
+  })
+
+  const refreshToken = signRefreshToken()
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000)
+
+  await db.refreshToken.create({
+    data: {
+      token: refreshToken,
+      userId: user.clerkId,
+      expiresAt,
+    },
+  })
+
+  res.setHeader("Set-Cookie", [createAccessCookie(accessToken), createRefreshCookie(refreshToken)])
+}
 
 // POST /api/auth/register
 router.post("/register", async (req: Request, res: Response) => {
@@ -77,17 +105,10 @@ router.post("/register", async (req: Request, res: Response) => {
       })
     }
 
-    // Generate and set JWT cookie
+    // Generate and set JWT + refresh token cookies
     const user = await db.user.findUnique({ where: { email: email.toLowerCase() } })
     if (user) {
-      const token = signToken({
-        userId: user.id.toString(),
-        clerkId: user.clerkId,
-        email: user.email,
-        isEmployer: user.isEmployer,
-        isApplicant: user.isApplicant,
-      })
-      res.setHeader("Set-Cookie", createCookie(token))
+      await setAuthCookies(user.id.toString(), res)
     }
 
     return res.status(201).json({
@@ -125,15 +146,7 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Invalid email or password" })
     }
 
-    const token = signToken({
-      userId: user.id.toString(),
-      clerkId: user.clerkId,
-      email: user.email,
-      isEmployer: user.isEmployer,
-      isApplicant: user.isApplicant,
-    })
-
-    res.setHeader("Set-Cookie", createCookie(token))
+    await setAuthCookies(user.id.toString(), res)
 
     return res.json({
       success: true,
@@ -146,9 +159,61 @@ router.post("/login", async (req: Request, res: Response) => {
 })
 
 // POST /api/auth/logout
-router.post("/logout", (_req: Request, res: Response) => {
-  res.setHeader("Set-Cookie", clearCookie())
+router.post("/logout", async (req: Request, res: Response) => {
+  const refreshToken = req.cookies?.["refresh-token"]
+  if (refreshToken) {
+    await db.refreshToken.deleteMany({ where: { token: refreshToken } })
+  }
+  res.setHeader("Set-Cookie", [clearAccessCookie(), clearRefreshCookie()])
   return res.json({ success: true, message: "Logged out successfully" })
+})
+
+// POST /api/auth/refresh — rotate refresh token
+router.post("/refresh", async (req: Request, res: Response) => {
+  const token = req.cookies?.["refresh-token"]
+  if (!token) {
+    return res.status(401).json({ success: false, message: "No refresh token" })
+  }
+
+  const existing = await db.refreshToken.findUnique({ where: { token } })
+  if (!existing || existing.expiresAt < new Date()) {
+    if (existing) {
+      await db.refreshToken.delete({ where: { id: existing.id } })
+    }
+    return res.status(401).json({ success: false, message: "Invalid or expired refresh token" })
+  }
+
+  const user = await db.user.findUnique({ where: { clerkId: existing.userId } })
+  if (!user) {
+    await db.refreshToken.delete({ where: { id: existing.id } })
+    return res.status(401).json({ success: false, message: "User not found" })
+  }
+
+  // Rotate: delete old, create new
+  await db.refreshToken.delete({ where: { id: existing.id } })
+
+  const accessToken = signAccessToken({
+    userId: user.id.toString(),
+    clerkId: user.clerkId,
+    email: user.email,
+    isEmployer: user.isEmployer,
+    isApplicant: user.isApplicant,
+  })
+
+  const newRefreshToken = signRefreshToken()
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000)
+
+  await db.refreshToken.create({
+    data: {
+      token: newRefreshToken,
+      userId: user.clerkId,
+      expiresAt,
+    },
+  })
+
+  res.setHeader("Set-Cookie", [createAccessCookie(accessToken), createRefreshCookie(newRefreshToken)])
+
+  return res.json({ success: true })
 })
 
 // GET /api/auth/me
@@ -258,15 +323,7 @@ router.post("/oauth", async (req: Request, res: Response) => {
       await db.userProfile.create({ data: { userId: user.clerkId } })
     }
 
-    const token = signToken({
-      userId: user.id.toString(),
-      clerkId: user.clerkId,
-      email: user.email,
-      isEmployer: user.isEmployer,
-      isApplicant: user.isApplicant,
-    })
-
-    res.setHeader("Set-Cookie", createCookie(token))
+    await setAuthCookies(user.id.toString(), res)
 
     return res.json({
       success: true,
