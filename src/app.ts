@@ -2,7 +2,9 @@ import express from "express"
 import cors from "cors"
 import helmet from "helmet"
 import cookieParser from "cookie-parser"
+import swaggerUi from "swagger-ui-express"
 import env from "./config/env"
+import { swaggerSpec } from "./config/swagger"
 import { errorHandler } from "./middleware/error-handler"
 
 import authRoutes from "./routes/auth"
@@ -53,6 +55,8 @@ app.use("/api/stats", statsRoutes)
 if (env.isDev) {
   app.use("/api/test", testRoutes)
 }
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 
 app.use(errorHandler)
 

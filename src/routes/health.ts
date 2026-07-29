@@ -3,6 +3,17 @@ import { db } from "../lib/db"
 
 const router = Router()
 
+/**
+ * @openapi
+ * /api/health:
+ *   get:
+ *     tags: [Health]
+ *     summary: Health check
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ */
+
 router.get("/", async (_req: Request, res: Response) => {
   try {
     await db.$queryRaw`SELECT 1`
