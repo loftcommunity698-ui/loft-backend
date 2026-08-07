@@ -1,11 +1,13 @@
 import app from "./app"
 import env from "./config/env"
 import { createLogger } from "./lib/logger"
+import { ensureSearchIndex } from "./services/search"
 
 const log = createLogger("server")
 
 const server = app.listen(env.port, () => {
   log.info(`Loft API running on port ${env.port}`)
+  ensureSearchIndex().catch((err) => log.error("Failed to ensure search index", err))
 })
 
 const shutdown = () => {
