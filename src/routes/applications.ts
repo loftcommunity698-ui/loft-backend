@@ -26,7 +26,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     const where: Record<string, unknown> = {}
     if (statusParam) where.status = statusParam
     if (jobIdParam) {
-      where.jobId = parseInt(jobIdParam)
+      where.jobId = jobIdParam
     } else if (isAdmin) {
       // Admin sees all applications
     } else if (user.isEmployer) {
@@ -38,7 +38,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     const applications = await db.jobApplication.findMany({
       where,
       include: {
-        job: { include: { employer: { select: { companyName: true, companyLogo: true, city: true } } } },
+        job: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true, profileImage: true } },
       },
       orderBy: { appliedAt: "desc" },
@@ -50,7 +50,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       interviewAt: app.interviewAt, englishTestScore: app.englishTestScore,
       englishTestRequired: app.englishTestRequired, employerNotes: app.employerNotes,
       isShortlisted: app.isShortlisted,
-      job: { id: app.job.id, title: app.job.title, slug: app.job.slug, location: app.job.location, city: app.job.city, jobType: app.job.jobType, company: app.job.employer },
+      job: { id: app.job.id, title: app.job.title, location: app.job.location, company: app.job.company, companyLogo: app.job.companyLogo, remote: app.job.remote, category: app.job.category, seniority: app.job.seniority, tags: app.job.tags },
       candidate: { id: app.user.id, firstName: app.user.firstName, lastName: app.user.lastName, email: app.user.email, profileImage: app.user.profileImage },
     })))
   } catch (error) {
@@ -67,7 +67,7 @@ router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
     const application = await db.jobApplication.findUnique({
       where: { id: applicationId },
       include: {
-        job: { include: { employer: { select: { companyName: true, companyLogo: true, city: true, industry: true } }, requiredSkillsRelation: { include: { skill: true } } } },
+        job: true,
         user: { select: { id: true, clerkId: true, firstName: true, lastName: true, email: true, profileImage: true, name: true } },
         interview: true,
       },
@@ -90,7 +90,7 @@ router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
       acceptedAt: application.acceptedAt, employerNotes: application.employerNotes,
       englishTestRequired: application.englishTestRequired, englishTestScore: application.englishTestScore,
       passedScreening: application.passedScreening,
-      job: { id: application.job.id, title: application.job.title, slug: application.job.slug, location: application.job.location, city: application.job.city, jobType: application.job.jobType, experienceLevel: application.job.experienceLevel, workMode: application.job.workMode, salaryMin: application.job.salaryMin, salaryMax: application.job.salaryMax, salaryCurrency: application.job.salaryCurrency, skills: application.job.requiredSkillsRelation.map(rs => rs.skill.name), company: application.job.employer },
+      job: { id: application.job.id, title: application.job.title, location: application.job.location, company: application.job.company, companyLogo: application.job.companyLogo, remote: application.job.remote, salaryMin: application.job.salaryMin, salaryMax: application.job.salaryMax, currency: application.job.currency, tags: application.job.tags, category: application.job.category, seniority: application.job.seniority },
       candidate: application.user,
       interview: application.interview,
     })
@@ -201,7 +201,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
 
     const application = await db.jobApplication.findUnique({
       where: { id: applicationId },
-      include: { user: true, job: { include: { employer: { select: { companyName: true, contactEmail: true } } } } },
+      include: { user: true, job: true },
     })
     if (!application) return res.status(404).json({ error: "Application not found" })
 
@@ -232,7 +232,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
       data: { userId: application.userId, title: "Application Status Update", message: `Your application for ${application.job.title} is now ${status.toLowerCase()}`, type: notificationType, link: `/applications/${application.id}` },
     })
 
-    const companyName = application.job.employer?.companyName || "the company"
+    const companyName = application.job.company || "the company"
     const shouldNotify = await shouldSendEmail(application.userId, "applicationUpdates")
     if (shouldNotify) {
       await sendEmail(emailTemplates.statusUpdate(application.job.title, companyName, status.toLowerCase(), application.user.email))

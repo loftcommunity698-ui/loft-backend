@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express"
-import { db } from "../lib/db"
+import { listTags } from "../services/jobs"
 
 const router = Router()
 
@@ -8,13 +8,8 @@ router.get("/search", async (req: Request, res: Response) => {
   const q = (req.query.q as string) || ""
   if (q.length < 1) return res.json([])
 
-  const skills = await db.skill.findMany({
-    where: { name: { contains: q, mode: "insensitive" } },
-    take: 10,
-    orderBy: { name: "asc" },
-  })
-
-  return res.json(skills)
+  const tags = await listTags(q)
+  return res.json(tags)
 })
 
 export default router

@@ -67,21 +67,21 @@ router.post("/setup", async (_req: Request, res: Response) => {
 
     // Create test job
     const job = await db.job.upsert({
-      where: { slug: "e2e-test-job" },
+      where: { id: "e2e-test-job" },
       update: {},
       create: {
+        id: "e2e-test-job",
         title: "E2E Test Position",
-        slug: "e2e-test-job",
+        company: "E2E Test Corp",
+        location: "Remote",
+        remote: true,
+        category: "Software Development",
+        seniority: "Mid",
         description: "This is a test job for E2E testing purposes.",
-        jobType: "FULL_TIME" as any,
-        experienceLevel: "MID" as any,
-        workMode: "REMOTE" as any,
-        remoteWork: true,
-        status: "PUBLISHED" as any,
-        isActive: true,
+        tags: ["Testing", "TypeScript"],
+        requirements: ["Testing", "TypeScript"],
+        responsibilities: [],
         employerId: employer.clerkId,
-        companyId: company?.id || null,
-        requiredSkills: ["Testing", "TypeScript"],
       },
     })
 
@@ -102,7 +102,7 @@ router.post("/setup", async (_req: Request, res: Response) => {
         applicantClerkId: applicant.clerkId,
         employerClerkId: employer.clerkId,
         password: "E2ETestPass123!",
-        jobSlug: job.slug,
+        jobSlug: job.id,
         jobId: job.id,
       },
     })

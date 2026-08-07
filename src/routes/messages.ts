@@ -20,7 +20,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     if (!user) return res.status(404).json({ error: "User not found" })
 
     const whereClause: any = { OR: [{ senderId: user.clerkId }, { receiverId: user.clerkId }] }
-    if (jobId) whereClause.jobId = parseInt(jobId)
+    if (jobId) whereClause.jobId = jobId
 
     const messages = await db.message.findMany({
       where: whereClause,
@@ -49,6 +49,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
     const { receiverId, content: rawContent, jobId } = req.body
     const content = (rawContent || "").trim().slice(0, 5000)
     if (!receiverId || !content) return res.status(400).json({ error: "Missing required fields" })
+    if (receiverId === user.clerkId) return res.status(400).json({ error: "Cannot message yourself" })
 
     const ip = req.ip || req.socket.remoteAddress || "unknown"
     const { success: withinLimit } = await rateLimit(`msg:${user.clerkId}:${ip}`, 30, 60000)
@@ -56,7 +57,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
 
     // Verify candidate is at INTERVIEW stage if jobId provided
     if (jobId) {
-      const application = await db.jobApplication.findFirst({ where: { jobId: parseInt(jobId), userId: receiverId } })
+      const application = await db.jobApplication.findFirst({ where: { jobId, userId: receiverId } })
       if (!application) return res.status(404).json({ error: "Application not found" })
       if (application.status !== "INTERVIEW" && application.status !== "OFFERED") {
         return res.status(403).json({ error: "Messaging only available when candidate is at Interview stage" })
@@ -64,7 +65,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
     }
 
     const message = await db.message.create({
-      data: { senderId: user.clerkId, receiverId, content, jobId: jobId ? parseInt(jobId) : null },
+      data: { senderId: user.clerkId, receiverId, content, jobId: jobId || null },
     })
 
     const senderName = user.firstName || user.name || "Employer"
@@ -81,7 +82,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
 
     const messagePayload = {
       id: message.id, content: message.content, senderId: user.clerkId,
-      receiverId, jobId: jobId ? parseInt(jobId) : null,
+      receiverId, jobId: jobId || null,
       createdAt: message.createdAt,
       sender: { id: user.id, firstName: user.firstName, lastName: user.lastName, profileImage: user.profileImage },
       receiver: receiver ? { id: receiver.id, firstName: receiver.firstName, lastName: receiver.lastName, profileImage: receiver.profileImage } : null,

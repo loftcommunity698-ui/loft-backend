@@ -182,12 +182,12 @@ router.get("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res: Re
 
     const savedJobs = await db.savedJob.findMany({
       where: { userId: user.clerkId },
-      include: { job: { include: { employer: { select: { companyName: true, companyLogo: true } } } } },
+      include: { job: true },
       orderBy: { createdAt: "desc" },
     })
     return res.json(savedJobs.map(sj => ({
       id: sj.id, jobId: sj.jobId, savedAt: sj.createdAt,
-      job: { id: sj.job.id, title: sj.job.title, slug: sj.job.slug, location: sj.job.location, city: sj.job.city, remoteWork: sj.job.remoteWork, jobType: sj.job.jobType, company: sj.job.employer },
+      job: { id: sj.job.id, title: sj.job.title, company: sj.job.company, companyLogo: sj.job.companyLogo, location: sj.job.location, remote: sj.job.remote, category: sj.job.category, seniority: sj.job.seniority, salaryMin: sj.job.salaryMin, salaryMax: sj.job.salaryMax, currency: sj.job.currency, tags: sj.job.tags },
     })))
   } catch (error) {
     log.error("Get saved jobs error", error)
@@ -230,7 +230,7 @@ router.delete("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res:
     if (!user) return res.status(404).json({ error: "User not found" })
 
     await db.savedJob.delete({
-      where: { userId_jobId: { userId: user.clerkId, jobId: parseInt(jobId) } },
+      where: { userId_jobId: { userId: user.clerkId, jobId } },
     })
     return res.json({ success: true })
   } catch (error) {

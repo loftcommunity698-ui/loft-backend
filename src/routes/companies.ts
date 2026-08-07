@@ -53,16 +53,18 @@ router.get("/jobs", requireAuth, async (req: AuthenticatedRequest, res: Response
     if (!user?.companyMemberships?.length) return res.status(401).json({ error: "Unauthorized" })
 
     const companyId = user.companyMemberships[0].companyId
-    const status = req.query.status as string
+    const featured = req.query.featured as string
     const assignedToMe = req.query.assignedToMe === "true"
 
-    const where: any = { companyId }
-    if (status) where.status = status
+    const memberUserIds = (await db.companyMember.findMany({ where: { companyId }, select: { userId: true } })).map(m => m.userId)
+
+    const where: any = { employerId: { in: memberUserIds } }
+    if (featured) where.featured = featured === "true"
     if (assignedToMe) where.employerId = user.clerkId
 
     const jobs = await db.job.findMany({
       where,
-      include: { employer: { select: { companyName: true, companyLogo: true, city: true, contactEmail: true } } },
+      include: { employer: { select: { email: true, firstName: true, lastName: true } } },
       orderBy: { createdAt: "desc" },
     })
     return res.json(jobs)

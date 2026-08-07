@@ -41,11 +41,11 @@ router.get("/analytics", requireAuth, async (req: AuthenticatedRequest, res: Res
     db.user.count(),
     db.user.count({ where: { isApplicant: true } }),
     db.user.count({ where: { isEmployer: true } }),
-    db.job.count({ where: { status: "PUBLISHED", isActive: true } }),
+    db.job.count({ where: { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } }),
     db.jobApplication.count(),
     db.jobApplication.count({ where: { status: "HIRED" } }),
-    db.job.count({ where: { status: "DRAFT" } }),
-    db.job.count({ where: { isActive: false, status: "PUBLISHED" } }),
+    0,
+    db.job.count({ where: { expiresAt: { lte: new Date() } } }),
     db.jobApplication.count({ where: { appliedAt: { gte: weekAgo } } }),
     db.jobApplication.count({ where: { status: "PENDING" } }),
     db.jobApplication.count({ where: { status: "REVIEWING" } }),
@@ -157,20 +157,22 @@ router.patch("/company", requireAuth, async (req: AuthenticatedRequest, res: Res
 router.get("/jobs", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (!(await requireAdmin(req, res))) return
 
-  const status = req.query.status as string
-  const whereClause = status ? { status: status as any } : {}
+  const featured = req.query.featured as string
+  const whereClause = featured ? { featured: featured === "true" } : {}
 
   const jobs = await db.job.findMany({
     where: whereClause,
-    include: { employer: { select: { companyName: true, contactEmail: true, user: { select: { email: true } } } } },
+    include: { employer: { select: { email: true } } },
     orderBy: { createdAt: "desc" }, take: 100,
   })
 
-  return res.json(jobs.map(job => ({
-    id: job.id, title: job.title, status: job.status, isActive: job.isActive,
-    createdAt: job.createdAt, publishedAt: job.publishedAt, applicationsCount: job.applicationsCount,
-    company: { name: job.employer?.companyName, email: job.employer?.user?.email },
-  })))
+  return res.json({ success: true, data: jobs.map(job => ({
+    id: job.id, title: job.title, company: job.company, companyLogo: job.companyLogo,
+    location: job.location, remote: job.remote, category: job.category, seniority: job.seniority,
+    salaryMin: job.salaryMin, salaryMax: job.salaryMax, currency: job.currency, tags: job.tags,
+    featured: job.featured, postedDate: job.postedDate, expiresAt: job.expiresAt,
+    createdAt: job.createdAt, employerEmail: job.employer?.email,
+  })) })
 })
 
 // PATCH /api/admin/jobs - Moderate job
@@ -182,9 +184,9 @@ router.patch("/jobs", requireAuth, async (req: AuthenticatedRequest, res: Respon
 
   const updateData: any = {}
   switch (action) {
-    case "approve": updateData.status = "PUBLISHED"; updateData.isActive = true; break
-    case "reject": updateData.status = "CLOSED"; updateData.isActive = false; break
-    case "flag": updateData.isActive = false; break
+    case "approve": updateData.featured = true; break
+    case "reject": updateData.expiresAt = new Date(); break
+    case "flag": updateData.featured = false; break
     default: return res.status(400).json({ error: "Invalid action" })
   }
 
@@ -241,9 +243,8 @@ router.get("/applications", requireAuth, async (req: AuthenticatedRequest, res: 
     include: {
       job: {
         select: {
-          id: true, title: true, slug: true, location: true, city: true,
-          jobType: true, experienceLevel: true, workMode: true,
-          employer: { select: { companyName: true, companyLogo: true, contactEmail: true } },
+          id: true, title: true, company: true, companyLogo: true, location: true, remote: true,
+          category: true, seniority: true, employer: { select: { email: true } },
         },
       },
       user: {
@@ -288,8 +289,7 @@ router.get("/applications/:id", requireAuth, async (req: AuthenticatedRequest, r
     include: {
       job: {
         include: {
-          employer: { select: { companyName: true, companyLogo: true, city: true, industry: true, contactEmail: true } },
-          requiredSkillsRelation: { include: { skill: true } },
+          employer: { select: { email: true } },
         },
       },
       user: {
@@ -315,14 +315,16 @@ router.get("/applications/:id", requireAuth, async (req: AuthenticatedRequest, r
     englishTestScore: application.englishTestScore,
     passedScreening: application.passedScreening,
     job: {
-      id: application.job.id, title: application.job.title, slug: application.job.slug,
-      location: application.job.location, city: application.job.city,
-      jobType: application.job.jobType, experienceLevel: application.job.experienceLevel,
-      workMode: application.job.workMode,
+      id: application.job.id, title: application.job.title,
+      company: application.job.company, companyLogo: application.job.companyLogo,
+      location: application.job.location, remote: application.job.remote,
+      category: application.job.category, seniority: application.job.seniority,
       salaryMin: application.job.salaryMin, salaryMax: application.job.salaryMax,
-      salaryCurrency: application.job.salaryCurrency,
-      skills: application.job.requiredSkillsRelation.map(rs => rs.skill.name),
-      company: application.job.employer,
+      currency: application.job.currency, tags: application.job.tags,
+      description: application.job.description, requirements: application.job.requirements,
+      responsibilities: application.job.responsibilities,
+      postedDate: application.job.postedDate, expiresAt: application.job.expiresAt,
+      employerEmail: application.job.employer?.email,
     },
     candidate: application.user,
     interview: application.interview,
