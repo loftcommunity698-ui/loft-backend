@@ -95,6 +95,7 @@ model User {
   profile         UserProfile?
   resume          Resume?
   applications    JobApplication[]
+  jobs            Job[]
   employerProfile EmployerProfile?
   testResults     EnglishTestResult[]
   
@@ -259,7 +260,6 @@ model EmployerProfile {
   updatedAt       DateTime    @updatedAt
   
   // Relations
-  jobs            Job[]
 }
 
 // ============================================
@@ -278,7 +278,6 @@ model Company {
   updatedAt       DateTime  @updatedAt
 
   members         CompanyMember[]
-  jobs            Job[]
 }
 
 model CompanyMember {
@@ -304,85 +303,38 @@ enum CompanyRole {
 // ============================================
 
 model Job {
-  id              Int         @id @default(autoincrement())
-  
-  // Basic Info
-  title           String
-  slug            String      @unique
-  description     String      @db.Text
-  requirements    String?     @db.Text
-  benefits        String?     @db.Text
-  
-  // Job Details
-  jobType         JobType
-  experienceLevel ExperienceLevel
-  workMode        WorkMode
-  
-  // Location
-  location        String?
-  city            String?
-  country         String?
-  remoteWork      Boolean     @default(false)
-  
-  // Salary
-  salaryMin       Decimal?
-  salaryMax       Decimal?
-  salaryCurrency  String      @default("USD")
-  salaryPeriod    SalaryPeriod @default(YEARLY)
-  isSalaryVisible Boolean     @default(true)
-  
-  // Skills Required
-  requiredSkills  String[]
-  preferredSkills String[]
-  
-  // Status
-  status          JobStatus   @default(DRAFT)
-  isFeatured      Boolean     @default(false)
-  isActive        Boolean     @default(true)
-  
-  // Application
-  applicationUrl  String?
-  applicationEmail String?
-  deadline        DateTime?
-  
-  // Views & Stats
-  viewsCount      Int         @default(0)
-  applicationsCount Int       @default(0)
-  
-  // Company (required after migration - Loft Community)
-  companyId       Int?
-  company         Company? @relation(fields: [companyId], references: [id])
+  id               String   @id @default(cuid())
+  title            String
+  company          String
+  companyLogo      String?
+  location         String
+  remote           Boolean  @default(false)
+  salaryMin        Int?
+  salaryMax        Int?
+  currency         String   @default("USD")
+  tags             String[]
+  category         String
+  seniority        String
+  description      String
+  requirements     String[]
+  responsibilities String[]
+  postedDate       DateTime @default(now())
+  expiresAt        DateTime?
+  featured         Boolean  @default(false)
+  employerId       String
+  employer         User     @relation(fields: [employerId], references: [clerkId])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  // Employer (optional - the assigned employer managing this job)
-  employerId      String
-  employer        EmployerProfile @relation(fields: [employerId], references: [userId])
-  
-  // Category
-  category        JobCategory? @relation(fields: [categoryId], references: [id])
-  categoryId      Int?
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  publishedAt     DateTime?
-  closedAt        DateTime?
-  
-  // Relations
   applications    JobApplication[]
   savedBy         SavedJob[]
-  requiredSkillsRelation JobRequiredSkill[]
   messages        Message[]
-}
 
-model JobCategory {
-  id          Int     @id @default(autoincrement())
-  name        String  @unique
-  slug        String  @unique
-  description String?
-  icon        String?
-  jobs        Job[]
-  parentId    Int?
-  parent      JobCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children    JobCategory[] @relation("CategoryHierarchy")
+  @@index([category])
+  @@index([seniority])
+  @@index([location])
+  @@index([remote])
+  @@index([employerId])
 }
 
 // ============================================
@@ -397,7 +349,7 @@ model JobApplication {
   user            User            @relation(fields: [userId], references: [clerkId])
   
   // Job
-  jobId           Int
+  jobId           String
   job             Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
   // Application Data
@@ -463,7 +415,7 @@ model Interview {
 model SavedJob {
   id              Int         @id @default(autoincrement())
   userId          String
-  jobId           Int
+  jobId           String
   job             Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
   createdAt       DateTime    @default(now())
@@ -619,37 +571,6 @@ enum NotificationType {
 // ENUMS
 // ============================================
 
-enum JobType {
-  FULL_TIME
-  PART_TIME
-  CONTRACT
-  INTERNSHIP
-  TEMPORARY
-  FREELANCE
-}
-
-enum ExperienceLevel {
-  ENTRY
-  JUNIOR
-  MID
-  SENIOR
-  LEAD
-  EXECUTIVE
-}
-
-enum WorkMode {
-  ONSITE
-  REMOTE
-  HYBRID
-}
-
-enum JobStatus {
-  DRAFT
-  PUBLISHED
-  CLOSED
-  ARCHIVED
-}
-
 enum ApplicationStatus {
   PENDING
   REVIEWING
@@ -699,14 +620,6 @@ enum AvailabilityType {
   NOT_AVAILABLE
 }
 
-enum SalaryPeriod {
-  HOURLY
-  DAILY
-  WEEKLY
-  MONTHLY
-  YEARLY
-}
-
 // ============================================
 // SKILLS SYSTEM
 // ============================================
@@ -725,7 +638,6 @@ model Skill {
   createdAt   DateTime  @default(now())
   
   userSkills   UserSkill[]
-  jobSkills    JobRequiredSkill[]
 }
 
 model UserSkill {
@@ -739,17 +651,6 @@ model UserSkill {
   @@unique([userId, skillId])
 }
 
-model JobRequiredSkill {
-  id          Int       @id @default(autoincrement())
-  jobId       Int
-  skillId     Int
-  isRequired  Boolean   @default(true)
-  skill       Skill     @relation(fields: [skillId], references: [id])
-  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  
-  @@unique([jobId, skillId])
-}
-
 // ============================================
 // MESSAGING
 // ============================================
@@ -759,7 +660,7 @@ model Message {
   senderId        String
   receiverId      String
   content         String    @db.Text
-  jobId           Int?
+  jobId           String?
   conversationId  String?   // Groups messages: "jobId-userId" or "userId-userId"
   readAt          DateTime?
   createdAt       DateTime  @default(now())
@@ -787,7 +688,7 @@ model Report {
   id            Int           @id @default(autoincrement())
   reporterId    String
   reportedType  String
-  reportedId    Int
+  reportedId    String
   reason        String
   status        ReportStatus  @default(PENDING)
   createdAt     DateTime      @default(now())
