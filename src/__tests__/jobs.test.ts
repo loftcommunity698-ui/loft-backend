@@ -92,4 +92,30 @@ describe('GET /api/jobs search', () => {
       expect(ids).not.toContain(job.id)
     }
   })
+
+  it('defaults to recent sort and never leaks rank without explicit sort=relevance', async () => {
+    const noSort = await request(app).get('/api/jobs').query({ search: 'engineer' }).expect(200)
+    expect(noSort.body.success).toBe(true)
+    expect(noSort.body.data.length).toBeGreaterThan(0)
+    expect(noSort.body.data.map((j: any) => j.rank)).toEqual(Array(noSort.body.data.length).fill(undefined))
+    const dates = noSort.body.data.map((j: any) => new Date(j.postedDate).getTime())
+    for (let i = 1; i < dates.length; i++) {
+      expect(dates[i - 1]).toBeGreaterThanOrEqual(dates[i])
+    }
+  })
+
+  it('exposes rank only when sort=relevance is explicitly requested', async () => {
+    const relevance = await request(app).get('/api/jobs').query({ search: 'engineer', sort: 'relevance', take: '5' }).expect(200)
+    expect(relevance.body.data.length).toBeGreaterThan(0)
+    for (const job of relevance.body.data) {
+      expect(typeof job.rank).toBe('number')
+    }
+  })
+
+  it('caps take at 100 and falls back to default on invalid take', async () => {
+    const res = await request(app).get('/api/jobs').query({ sort: 'recent', take: '100000' }).expect(200)
+    expect(res.body.data.length).toBeLessThanOrEqual(100)
+    const invalid = await request(app).get('/api/jobs').query({ sort: 'recent', take: 'abc' }).expect(200)
+    expect(invalid.body.success).toBe(true)
+  })
 })

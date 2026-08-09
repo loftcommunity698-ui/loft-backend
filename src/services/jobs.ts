@@ -130,10 +130,13 @@ function buildCursorClause(cursor: Record<string, unknown>, sort: JobSort, offse
 }
 
 export async function listJobs(params: ListJobsQuery) {
-  const take = params.take ?? 12
+  const takeRaw = params.take
+  const take = takeRaw !== undefined && Number.isInteger(takeRaw)
+    ? Math.min(Math.max(takeRaw, 1), 100)
+    : 12
   const search = params.search?.trim()
   const relevanceValid = search !== undefined && search.length >= 3
-  const sort = (params.sort ?? (relevanceValid ? 'relevance' : 'recent')) as JobSort
+  const sort = (params.sort ?? 'recent') as JobSort
   const effectiveSort: JobSort = sort === 'relevance' && !relevanceValid ? 'recent' : sort
 
   const filters = buildFilters(params)
