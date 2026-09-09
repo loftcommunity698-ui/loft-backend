@@ -1,34 +1,13 @@
 import { Router, Response } from "express"
 import { db } from "../lib/db"
 import { requireAuth } from "../middleware/auth"
+import { requireAdmin } from "../middleware/rbac"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
-import env from "../config/env"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("admin")
-
-// Flexible admin check: CompanyMember with role ADMIN, or email in ADMIN_EMAILS env var
-async function requireAdmin(req: AuthenticatedRequest, res: Response): Promise<boolean> {
-  try {
-    const userEmail = req.user!.email
-
-    if (env.adminEmails.includes(userEmail)) return true
-
-    const user = await db.user.findUnique({
-      where: { email: userEmail },
-      include: { companyMemberships: { where: { role: "ADMIN" }, take: 1 } },
-    })
-    if (!user?.companyMemberships?.length) {
-      res.status(403).json({ error: "Unauthorized" })
-      return false
-    }
-    return true
-  } catch {
-    res.status(403).json({ error: "Unauthorized" })
-    return false
-  }
-}
 
 // GET /api/admin/analytics
 router.get("/analytics", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -81,13 +60,13 @@ router.post("/employers", requireAuth, async (req: AuthenticatedRequest, res: Re
   if (!(await requireAdmin(req, res))) return
 
   const { email, role } = req.body
-  if (!email) return res.status(400).json({ error: "Email required" })
+  if (!email) return failure(res, "Email required", 400)
 
   const user = await db.user.findUnique({ where: { email } })
-  if (!user) return res.status(404).json({ error: "User not found" })
+  if (!user) return failure(res, "User not found", 404)
 
   const existing = await db.companyMember.findUnique({ where: { companyId_userId: { companyId: 1, userId: user.clerkId } } })
-  if (existing) return res.status(409).json({ error: "User is already a member" })
+  if (existing) return failure(res, "User is already a member", 409)
 
   const member = await db.companyMember.create({
     data: { companyId: 1, userId: user.clerkId, role: role === "ADMIN" ? "ADMIN" : "EMPLOYER" },
@@ -102,10 +81,10 @@ router.patch("/employers/:id", requireAuth, async (req: AuthenticatedRequest, re
 
   const memberId = parseInt(req.params.id)
   const { role } = req.body
-  if (!role || !["ADMIN", "EMPLOYER"].includes(role)) return res.status(400).json({ error: "Invalid role" })
+  if (!role || !["ADMIN", "EMPLOYER"].includes(role)) return failure(res, "Invalid role", 400)
 
   const member = await db.companyMember.findUnique({ where: { id: memberId } })
-  if (!member) return res.status(404).json({ error: "Member not found" })
+  if (!member) return failure(res, "Member not found", 404)
 
   const updated = await db.companyMember.update({
     where: { id: memberId }, data: { role },
@@ -120,11 +99,11 @@ router.delete("/employers/:id", requireAuth, async (req: AuthenticatedRequest, r
 
   const memberId = parseInt(req.params.id)
   const member = await db.companyMember.findUnique({ where: { id: memberId } })
-  if (!member) return res.status(404).json({ error: "Member not found" })
+  if (!member) return failure(res, "Member not found", 404)
 
   if (member.role === "ADMIN") {
     const adminCount = await db.companyMember.count({ where: { companyId: 1, role: "ADMIN" } })
-    if (adminCount <= 1) return res.status(400).json({ error: "Cannot remove the last admin" })
+    if (adminCount <= 1) return failure(res, "Cannot remove the last admin", 400)
   }
 
   await db.companyMember.delete({ where: { id: memberId } })
@@ -136,7 +115,7 @@ router.get("/company", requireAuth, async (req: AuthenticatedRequest, res: Respo
   if (!(await requireAdmin(req, res))) return
 
   const company = await db.company.findUnique({ where: { slug: "loft-community" } })
-  if (!company) return res.status(404).json({ error: "Company not found" })
+  if (!company) return failure(res, "Company not found", 404)
   return res.json(company)
 })
 
@@ -180,14 +159,14 @@ router.patch("/jobs", requireAuth, async (req: AuthenticatedRequest, res: Respon
   if (!(await requireAdmin(req, res))) return
 
   const { jobId, action, reason } = req.body
-  if (!jobId || !action) return res.status(400).json({ error: "Missing required fields" })
+  if (!jobId || !action) return failure(res, "Missing required fields", 400)
 
   const updateData: any = {}
   switch (action) {
     case "approve": updateData.featured = true; break
     case "reject": updateData.expiresAt = new Date(); break
     case "flag": updateData.featured = false; break
-    default: return res.status(400).json({ error: "Invalid action" })
+    default: return failure(res, "Invalid action", 400)
   }
 
   const job = await db.job.update({ where: { id: jobId }, data: updateData })
@@ -303,7 +282,7 @@ router.get("/applications/:id", requireAuth, async (req: AuthenticatedRequest, r
     },
   })
 
-  if (!application) return res.status(404).json({ error: "Application not found" })
+  if (!application) return failure(res, "Application not found", 404)
 
   return res.json({
     id: application.id, status: application.status, coverLetter: application.coverLetter,

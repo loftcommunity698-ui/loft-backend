@@ -68,11 +68,19 @@ export const emailTemplates = {
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">Application Submitted!</h1>
           <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> has been submitted successfully.</p>
-          <p>You can track your application status in your LoftCommunity dashboard.</p>
+          <p>Here are the next steps:</p>
+          <ol style="line-height: 1.8; color: #333;">
+            <li>The employer will review your application and resume.</li>
+            <li>Keep your profile and availability up to date — employers check it before reaching out.</li>
+            <li>Watch your email and the notification bell for status updates (shortlisted, interviewing, offered).</li>
+            <li>If shortlisted, you may be invited to schedule an interview — respond promptly to confirm a time.</li>
+            <li>Track your application status anytime in your LoftCommunity dashboard.</li>
+          </ol>
           <a href="${baseUrl}/dashboard/applications" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            View Application
+            Track Application
           </a>
+          <p style="margin-top: 24px; color: #888; font-size: 12px;">You received this email because you applied for a position on LoftCommunity.</p>
         </body>
       </html>
     `,

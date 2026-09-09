@@ -3,6 +3,7 @@ import { db } from "../lib/db"
 import { requireAuth } from "../middleware/auth"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("notifications")
@@ -12,7 +13,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const unreadOnly = req.query.unreadOnly === "true"
     const limit = parseInt(req.query.limit as string) || 50
@@ -27,7 +28,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     return res.json({ notifications, unreadCount, total: notifications.length })
   } catch (error) {
     log.error("List notifications error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -36,7 +37,7 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res: Response) 
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const { notificationIds, markAllRead } = req.body
 
@@ -56,10 +57,10 @@ router.patch("/", requireAuth, async (req: AuthenticatedRequest, res: Response) 
       return res.json({ success: true })
     }
 
-    return res.status(400).json({ error: "Invalid request" })
+    return failure(res, "Invalid request", 400)
   } catch (error) {
     log.error("Mark notifications read error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -68,14 +69,14 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
   try {
     const { userId, title, message, type, data, link } = req.body
     if (!userId || !title || !message || !type) {
-      return res.status(400).json({ error: "Missing required fields" })
+      return failure(res, "Missing required fields", 400)
     }
 
     const notification = await db.notification.create({ data: { userId, title, message, type, data, link } })
     return res.status(201).json({ success: true, notification })
   } catch (error) {
     log.error("Create notification error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -84,12 +85,12 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const notificationId = parseInt(req.params.id)
     const notification = await db.notification.findUnique({ where: { id: notificationId } })
-    if (!notification) return res.status(404).json({ error: "Notification not found" })
-    if (notification.userId !== user.clerkId) return res.status(403).json({ error: "Not authorized" })
+    if (!notification) return failure(res, "Notification not found", 404)
+    if (notification.userId !== user.clerkId) return failure(res, "Not authorized", 403)
 
     const { isRead } = req.body
     const updated = await db.notification.update({
@@ -99,7 +100,7 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
     return res.json({ success: true, notification: updated })
   } catch (error) {
     log.error("Update notification error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

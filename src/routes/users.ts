@@ -3,6 +3,7 @@ import { db } from "../lib/db"
 import { requireAuth } from "../middleware/auth"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("users")
@@ -15,11 +16,11 @@ router.get("/profile", requireAuth, async (req: AuthenticatedRequest, res: Respo
       where: { email: userEmail },
       include: { profile: { include: { skillsRelation: { include: { skill: true } } } }, resume: true },
     })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
     return res.json(user)
   } catch (error) {
     log.error("Get profile error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -66,7 +67,7 @@ router.patch("/profile", requireAuth, async (req: AuthenticatedRequest, res: Res
     return res.json({ user, profile })
   } catch (error) {
     log.error("Update profile error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -84,7 +85,7 @@ router.get("/skills", requireAuth, async (req: AuthenticatedRequest, res: Respon
     return res.json(skills)
   } catch (error) {
     log.error("Get skills error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -94,13 +95,13 @@ router.post("/skills", requireAuth, async (req: AuthenticatedRequest, res: Respo
     const userEmail = req.user!.email
     const { skillName, level } = req.body
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { profile: true } })
-    if (!user?.profile) return res.status(404).json({ error: "Profile not found" })
+    if (!user?.profile) return failure(res, "Profile not found", 404)
 
     let skill = await db.skill.findUnique({ where: { name: skillName } })
     if (!skill) skill = await db.skill.create({ data: { name: skillName, isCustom: true } })
 
     const existing = await db.userSkill.findFirst({ where: { userId: user.profile.id, skillId: skill.id } })
-    if (existing) return res.status(400).json({ error: "Skill already added" })
+    if (existing) return failure(res, "Skill already added", 400)
 
     const userSkill = await db.userSkill.create({
       data: { userId: user.profile.id, skillId: skill.id, level: level || "INTERMEDIATE" },
@@ -109,7 +110,7 @@ router.post("/skills", requireAuth, async (req: AuthenticatedRequest, res: Respo
     return res.json(userSkill)
   } catch (error) {
     log.error("Add skill error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -118,10 +119,10 @@ router.delete("/skills", requireAuth, async (req: AuthenticatedRequest, res: Res
   try {
     const userEmail = req.user!.email
     const skillId = req.query.skillId as string
-    if (!skillId) return res.status(400).json({ error: "skillId required" })
+    if (!skillId) return failure(res, "skillId required", 400)
 
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { profile: true } })
-    if (!user?.profile) return res.status(404).json({ error: "Profile not found" })
+    if (!user?.profile) return failure(res, "Profile not found", 404)
 
     await db.userSkill.delete({
       where: { userId_skillId: { userId: user.profile.id, skillId: parseInt(skillId) } },
@@ -129,7 +130,7 @@ router.delete("/skills", requireAuth, async (req: AuthenticatedRequest, res: Res
     return res.json({ success: true })
   } catch (error) {
     log.error("Delete skill error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -138,7 +139,7 @@ router.post("/role", requireAuth, async (req: AuthenticatedRequest, res: Respons
   try {
     const userEmail = req.user!.email
     const { role } = req.body
-    if (!role) return res.status(400).json({ error: "Role required" })
+    if (!role) return failure(res, "Role required", 400)
 
     const user = await db.user.update({
       where: { email: userEmail },
@@ -147,7 +148,7 @@ router.post("/role", requireAuth, async (req: AuthenticatedRequest, res: Respons
     return res.json({ success: true, role: user.isEmployer ? "EMPLOYER" : "JOB_SEEKER" })
   } catch (error) {
     log.error("Update role error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -156,10 +157,10 @@ router.post("/resume", requireAuth, async (req: AuthenticatedRequest, res: Respo
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const { fileUrl, fileName, fileSize, fileType } = req.body
-    if (!fileUrl) return res.status(400).json({ error: "fileUrl is required" })
+    if (!fileUrl) return failure(res, "fileUrl is required", 400)
 
     const resume = await db.resume.upsert({
       where: { userId: user.clerkId },
@@ -169,7 +170,7 @@ router.post("/resume", requireAuth, async (req: AuthenticatedRequest, res: Respo
     return res.json({ success: true, resume: { id: resume.id, fileName: resume.fileName, fileUrl: resume.fileUrl } })
   } catch (error) {
     log.error("Upload resume error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -178,7 +179,7 @@ router.get("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res: Re
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const savedJobs = await db.savedJob.findMany({
       where: { userId: user.clerkId },
@@ -191,7 +192,7 @@ router.get("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res: Re
     })))
   } catch (error) {
     log.error("Get saved jobs error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -200,22 +201,22 @@ router.post("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res: R
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const { jobId } = req.body
-    if (!jobId) return res.status(400).json({ error: "jobId required" })
+    if (!jobId) return failure(res, "jobId required", 400)
 
     const existing = await db.savedJob.findFirst({ where: { userId: user.clerkId, jobId } })
-    if (existing) return res.status(400).json({ error: "Job already saved" })
+    if (existing) return failure(res, "Job already saved", 400)
 
     const savedCount = await db.savedJob.count({ where: { userId: user.clerkId } })
-    if (savedCount >= 100) return res.status(400).json({ error: "Maximum 100 saved jobs reached" })
+    if (savedCount >= 100) return failure(res, "Maximum 100 saved jobs reached", 400)
 
     const savedJob = await db.savedJob.create({ data: { userId: user.clerkId, jobId } })
     return res.json({ success: true, savedJob })
   } catch (error) {
     log.error("Save job error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -224,10 +225,10 @@ router.delete("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res:
   try {
     const userEmail = req.user!.email
     const jobId = req.query.jobId as string
-    if (!jobId) return res.status(400).json({ error: "jobId required" })
+    if (!jobId) return failure(res, "jobId required", 400)
 
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     await db.savedJob.delete({
       where: { userId_jobId: { userId: user.clerkId, jobId } },
@@ -235,7 +236,7 @@ router.delete("/saved-jobs", requireAuth, async (req: AuthenticatedRequest, res:
     return res.json({ success: true })
   } catch (error) {
     log.error("Unsave job error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -244,14 +245,14 @@ router.get("/notifications", requireAuth, async (req: AuthenticatedRequest, res:
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     let prefs = await db.notificationPreference.findUnique({ where: { userId: user.clerkId } })
     if (!prefs) prefs = await db.notificationPreference.create({ data: { userId: user.clerkId } })
     return res.json(prefs)
   } catch (error) {
     log.error("Get notification prefs error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -260,7 +261,7 @@ router.patch("/notifications", requireAuth, async (req: AuthenticatedRequest, re
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const body = req.body
     const prefs = await db.notificationPreference.upsert({
@@ -276,7 +277,7 @@ router.patch("/notifications", requireAuth, async (req: AuthenticatedRequest, re
     return res.json(prefs)
   } catch (error) {
     log.error("Update notification prefs error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

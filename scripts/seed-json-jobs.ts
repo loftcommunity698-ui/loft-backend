@@ -28,43 +28,34 @@ async function main() {
   let skipped = 0
 
   for (const j of jobs) {
-    const existing = await prisma.job.findUnique({ where: { slug: j.slug } })
+    const existing = await prisma.job.findFirst({
+      where: { title: j.title, employerId: employerProfile.userId },
+    })
     if (existing) {
       skipped++
       continue
     }
 
+    const location = [j.city, j.country].filter(Boolean).join(", ") || j.location || "Remote"
+
     await prisma.job.create({
       data: {
         title: j.title,
-        slug: j.slug,
-        description: j.description || "",
-        requirements: j.requirements || null,
-        benefits: Array.isArray(j.benefits) ? (j.benefits.length > 0 ? j.benefits.join("\n") : null) : (j.benefits || null),
-        jobType: j.jobType || "FULL_TIME",
-        experienceLevel: j.experienceLevel || "MID",
-        workMode: j.workMode || "REMOTE",
-        location: j.location || null,
-        city: j.city || null,
-        country: j.country || null,
-        remoteWork: j.remoteWork ?? true,
+        company: employerProfile.companyName,
+        companyLogo: employerProfile.companyLogo || null,
+        location,
+        remote: j.remoteWork ?? true,
         salaryMin: j.salaryMin ? j.salaryMin : null,
         salaryMax: j.salaryMax ? j.salaryMax : null,
-        salaryCurrency: j.salaryCurrency || "USD",
-        salaryPeriod: j.salaryPeriod || "YEARLY",
-        isSalaryVisible: j.isSalaryVisible ?? true,
-        requiredSkills: j.requiredSkills || j.skills || [],
-        preferredSkills: j.preferredSkills || [],
-        status: "PUBLISHED",
-        isFeatured: j.isFeatured ?? false,
-        isActive: j.isActive ?? true,
-        applicationUrl: j.applicationUrl || null,
-        applicationEmail: j.applicationEmail || null,
+        currency: j.salaryCurrency || "USD",
+        tags: j.requiredSkills || j.skills || [],
+        category: j.category || "General",
+        seniority: j.experienceLevel || "Mid",
+        description: j.description || "",
+        requirements: Array.isArray(j.requirements) ? j.requirements : j.requirements ? [j.requirements] : [],
+        responsibilities: [],
+        featured: j.isFeatured ?? false,
         employerId: employerProfile.userId,
-        companyId: company.id,
-        applicationsCount: 0,
-        viewsCount: 0,
-        publishedAt: new Date(),
       },
     })
     created++

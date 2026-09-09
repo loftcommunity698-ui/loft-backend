@@ -15,3 +15,7 @@ export function created<T>(res: Response, data: T) {
 export function noContent(res: Response) {
   return res.status(204).send()
 }
+
+export function failure(res: Response, message: string, status = 500) {
+  return res.status(status).json({ success: false, error: message })
+}

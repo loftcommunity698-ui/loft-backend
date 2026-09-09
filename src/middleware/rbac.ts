@@ -1,6 +1,8 @@
 import type { Response, NextFunction } from "express"
 import { db } from "../lib/db"
+import { failure } from "../lib/response"
 import type { AuthenticatedRequest } from "../types"
+import env from "../config/env"
 
 async function evaluatePermission(userId: string, action: string): Promise<{ decision: "ALLOW" | "DENY"; reason: string; roleId?: string }> {
   const bindings = await db.roleBinding.findMany({
@@ -42,13 +44,13 @@ async function evaluatePermission(userId: string, action: string): Promise<{ dec
 export function requirePermission(action: string) {
   return async (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return _res.status(401).json({ error: "Authentication required" })
+      return failure(_res, "Authentication required", 401)
     }
 
     const result = await evaluatePermission(req.user.clerkId, action)
 
     if (result.decision === "DENY") {
-      return _res.status(403).json({ error: `Insufficient permissions: ${result.reason}` })
+      return failure(_res, `Insufficient permissions: ${result.reason}`, 403)
     }
 
     next()
@@ -58,14 +60,35 @@ export function requirePermission(action: string) {
 export function requireRole(...roles: string[]) {
   return (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return _res.status(401).json({ error: "Authentication required" })
+      return failure(_res, "Authentication required", 401)
     }
 
     const userRole = req.user.isEmployer ? "employer" : "seeker"
     if (!roles.includes(userRole)) {
-      return _res.status(403).json({ error: "Insufficient role" })
+      return failure(_res, "Insufficient role", 403)
     }
 
     next()
+  }
+}
+
+export async function requireAdmin(req: AuthenticatedRequest, res: Response): Promise<boolean> {
+  try {
+    const userEmail = req.user!.email
+
+    if (env.adminEmails.includes(userEmail)) return true
+
+    const user = await db.user.findUnique({
+      where: { email: userEmail },
+      include: { companyMemberships: { where: { role: "ADMIN" }, take: 1 } },
+    })
+    if (!user?.companyMemberships?.length) {
+      failure(res, "Unauthorized", 403)
+      return false
+    }
+    return true
+  } catch {
+    failure(res, "Unauthorized", 403)
+    return false
   }
 }

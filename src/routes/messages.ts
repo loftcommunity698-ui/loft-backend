@@ -6,6 +6,7 @@ import { createLogger } from "../lib/logger"
 import { sendEvent } from "../lib/sse"
 import { rateLimit } from "../lib/rate-limit"
 import type { AuthenticatedRequest } from "../types"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("messages")
@@ -17,7 +18,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     const jobId = req.query.jobId as string
 
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const whereClause: any = { OR: [{ senderId: user.clerkId }, { receiverId: user.clerkId }] }
     if (jobId) whereClause.jobId = jobId
@@ -35,7 +36,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     })))
   } catch (error) {
     log.error("List messages error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -44,23 +45,23 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
   try {
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const { receiverId, content: rawContent, jobId } = req.body
     const content = (rawContent || "").trim().slice(0, 5000)
-    if (!receiverId || !content) return res.status(400).json({ error: "Missing required fields" })
-    if (receiverId === user.clerkId) return res.status(400).json({ error: "Cannot message yourself" })
+    if (!receiverId || !content) return failure(res, "Missing required fields", 400)
+    if (receiverId === user.clerkId) return failure(res, "Cannot message yourself", 400)
 
     const ip = req.ip || req.socket.remoteAddress || "unknown"
     const { success: withinLimit } = await rateLimit(`msg:${user.clerkId}:${ip}`, 30, 60000)
-    if (!withinLimit) return res.status(429).json({ error: "Too many messages. Please slow down." })
+    if (!withinLimit) return failure(res, "Too many messages. Please slow down.", 429)
 
     // Verify candidate is at INTERVIEW stage if jobId provided
     if (jobId) {
       const application = await db.jobApplication.findFirst({ where: { jobId, userId: receiverId } })
-      if (!application) return res.status(404).json({ error: "Application not found" })
+      if (!application) return failure(res, "Application not found", 404)
       if (application.status !== "INTERVIEW" && application.status !== "OFFERED") {
-        return res.status(403).json({ error: "Messaging only available when candidate is at Interview stage" })
+        return failure(res, "Messaging only available when candidate is at Interview stage", 403)
       }
     }
 
@@ -94,7 +95,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
     return res.json({ success: true, message: { id: message.id, content: message.content, createdAt: message.createdAt } })
   } catch (error) {
     log.error("Send message error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -103,20 +104,20 @@ router.post("/:id/read", requireAuth, async (req: AuthenticatedRequest, res: Res
   try {
     const userEmail = req.user!.email
     const messageId = parseInt(req.params.id)
-    if (isNaN(messageId)) return res.status(400).json({ error: "Invalid message ID" })
+    if (isNaN(messageId)) return failure(res, "Invalid message ID", 400)
 
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const message = await db.message.findUnique({ where: { id: messageId } })
-    if (!message) return res.status(404).json({ error: "Message not found" })
-    if (message.receiverId !== user.clerkId) return res.status(403).json({ error: "Not authorized" })
+    if (!message) return failure(res, "Message not found", 404)
+    if (message.receiverId !== user.clerkId) return failure(res, "Not authorized", 403)
 
     await db.message.update({ where: { id: messageId }, data: { readAt: new Date() } })
     return res.json({ success: true })
   } catch (error) {
     log.error("Mark message read error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

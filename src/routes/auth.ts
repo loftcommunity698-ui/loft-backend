@@ -17,6 +17,7 @@ import {
 import { sendEmail } from "../lib/email"
 import { createLogger } from "../lib/logger"
 import env from "../config/env"
+import { failure } from "../lib/response"
 import type { AuthenticatedRequest, RegisterInput, LoginInput, OAuthInput } from "../types"
 
 const router = Router()
@@ -55,19 +56,19 @@ router.post("/register", async (req: Request, res: Response) => {
   const ip = req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown"
   const { success } = await rateLimit(`register:${ip}`, 5, 60000)
   if (!success) {
-    return res.status(429).json({ success: false, message: "Too many requests. Try again later." })
+    return failure(res, "Too many requests. Try again later.", 429)
   }
 
   try {
     const { email, password, firstName, lastName, role: rawRole } = req.body
 
     if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({ success: false, message: "Missing required fields" })
+      return failure(res, "Missing required fields", 400)
     }
 
     const passwordReq = validatePassword(password)
     if (!isPasswordStrongEnough(passwordReq)) {
-      return res.status(400).json({ success: false, message: "Password must be at least 8 characters with uppercase and number" })
+      return failure(res, "Password must be at least 8 characters with uppercase and number", 400)
     }
 
     const input: RegisterInput = {
@@ -81,7 +82,7 @@ router.post("/register", async (req: Request, res: Response) => {
 
     const result = await registerUser(input)
     if (!result.success) {
-      return res.status(400).json({ success: false, message: result.message })
+      return failure(res, result.message, 400)
     }
 
     const verificationToken = crypto.randomBytes(32).toString("hex")
@@ -118,7 +119,7 @@ router.post("/register", async (req: Request, res: Response) => {
     })
   } catch (error) {
     log.error("Register error", error)
-    return res.status(500).json({ success: false, message: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -127,23 +128,23 @@ router.post("/login", async (req: Request, res: Response) => {
   const ip = req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown"
   const { success } = await rateLimit(`login:${ip}`, 5, 60000)
   if (!success) {
-    return res.status(429).json({ success: false, message: "Too many requests. Try again later." })
+    return failure(res, "Too many requests. Try again later.", 429)
   }
 
   try {
     const { email, password } = req.body
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: "Email and password are required" })
+      return failure(res, "Email and password are required", 400)
     }
 
     const result = await loginUser({ email, password } as LoginInput)
     if (!result.success || !result.user) {
-      return res.status(401).json({ success: false, message: result.message })
+      return failure(res, result.message, 401)
     }
 
     const user = await db.user.findUnique({ where: { email: email.toLowerCase() } })
     if (!user) {
-      return res.status(401).json({ success: false, message: "Invalid email or password" })
+      return failure(res, "Invalid email or password", 401)
     }
 
     await setAuthCookies(user.id.toString(), res)
@@ -154,7 +155,7 @@ router.post("/login", async (req: Request, res: Response) => {
     })
   } catch (error) {
     log.error("Login error", error)
-    return res.status(500).json({ success: false, message: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -172,7 +173,7 @@ router.post("/logout", async (req: Request, res: Response) => {
 router.post("/refresh", async (req: Request, res: Response) => {
   const token = req.cookies?.["refresh-token"]
   if (!token) {
-    return res.status(401).json({ success: false, message: "No refresh token" })
+    return failure(res, "No refresh token", 401)
   }
 
   const existing = await db.refreshToken.findUnique({ where: { token } })
@@ -180,13 +181,13 @@ router.post("/refresh", async (req: Request, res: Response) => {
     if (existing) {
       await db.refreshToken.delete({ where: { id: existing.id } })
     }
-    return res.status(401).json({ success: false, message: "Invalid or expired refresh token" })
+    return failure(res, "Invalid or expired refresh token", 401)
   }
 
   const user = await db.user.findUnique({ where: { clerkId: existing.userId } })
   if (!user) {
     await db.refreshToken.delete({ where: { id: existing.id } })
-    return res.status(401).json({ success: false, message: "User not found" })
+    return failure(res, "User not found", 401)
   }
 
   // Rotate: delete old, create new
@@ -239,7 +240,7 @@ router.get("/me", requireAuth, async (req: AuthenticatedRequest, res: Response) 
     })
 
     if (!user) {
-      return res.status(401).json({ error: "User not found" })
+      return failure(res, "User not found", 401)
     }
 
     return res.json({
@@ -260,7 +261,7 @@ router.get("/me", requireAuth, async (req: AuthenticatedRequest, res: Response) 
     })
   } catch (error) {
     log.error("Get current user error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error")
   }
 })
 
@@ -271,7 +272,7 @@ router.post("/oauth", async (req: Request, res: Response) => {
     const { provider, accessToken } = req.body as OAuthInput
 
     if (!provider || !accessToken) {
-      return res.status(400).json({ success: false, message: "Provider and access token are required" })
+      return failure(res, "Provider and access token are required", 400)
     }
 
     // Verify the OAuth token with the provider
@@ -284,7 +285,7 @@ router.post("/oauth", async (req: Request, res: Response) => {
       if (!response.ok) {
         const altResponse = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${accessToken}`)
         if (!altResponse.ok) {
-          return res.status(401).json({ success: false, message: "Invalid Google token" })
+          return failure(res, "Invalid Google token", 401)
         }
         const data: any = await altResponse.json()
         email = data.email
@@ -297,11 +298,11 @@ router.post("/oauth", async (req: Request, res: Response) => {
         picture = data.picture
       }
     } else {
-      return res.status(400).json({ success: false, message: "Unsupported provider" })
+      return failure(res, "Unsupported provider", 400)
     }
 
     if (!email) {
-      return res.status(400).json({ success: false, message: "Could not retrieve email from provider" })
+      return failure(res, "Could not retrieve email from provider", 400)
     }
 
     // Find or create user
@@ -342,7 +343,7 @@ router.post("/oauth", async (req: Request, res: Response) => {
     })
   } catch (error) {
     log.error("OAuth error", error)
-    return res.status(500).json({ success: false, message: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -351,17 +352,17 @@ router.get("/verify-email", async (req: Request, res: Response) => {
   const token = req.query.token as string
 
   if (!token) {
-    return res.status(400).json({ success: false, message: "Token is required" })
+    return failure(res, "Token is required", 400)
   }
 
   const vt = await db.verificationToken.findUnique({ where: { token } })
   if (!vt) {
-    return res.status(400).json({ success: false, message: "Invalid or expired token" })
+    return failure(res, "Invalid or expired token", 400)
   }
 
   if (vt.expires < new Date()) {
     await db.verificationToken.delete({ where: { token } })
-    return res.status(400).json({ success: false, message: "Token has expired" })
+    return failure(res, "Token has expired", 400)
   }
 
   await db.user.update({
@@ -378,16 +379,16 @@ router.get("/verify-email", async (req: Request, res: Response) => {
 router.post("/verify-email", async (req: Request, res: Response) => {
   const { email } = req.body
   if (!email) {
-    return res.status(400).json({ success: false, message: "Email is required" })
+    return failure(res, "Email is required", 400)
   }
 
   const user = await db.user.findUnique({ where: { email } })
   if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" })
+    return failure(res, "User not found", 404)
   }
 
   if (user.emailVerified) {
-    return res.status(400).json({ success: false, message: "Email already verified" })
+    return failure(res, "Email already verified", 400)
   }
 
   await db.verificationToken.deleteMany({ where: { identifier: email } })
@@ -419,20 +420,21 @@ router.post("/reset-password", async (req: Request, res: Response) => {
   const ip = req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown"
   const { success } = await rateLimit(`reset:${ip}`, 3, 60000)
   if (!success) {
-    return res.status(429).json({ success: false, message: "Too many requests. Try again later." })
+    return failure(res, "Too many requests. Try again later.", 429)
   }
 
   try {
     const { email } = req.body
     if (!email) {
-      return res.status(400).json({ success: false, message: "Email is required" })
+      return failure(res, "Email is required", 400)
     }
 
     const result = await requestPasswordReset(email)
+    if (!result.success) return failure(res, result.message, 400)
     return res.json(result)
   } catch (error) {
     log.error("Reset password error", error)
-    return res.status(500).json({ success: false, message: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -442,27 +444,27 @@ router.post("/update-password", async (req: Request, res: Response) => {
     const { token, newPassword, confirmPassword } = req.body
 
     if (!token || !newPassword || !confirmPassword) {
-      return res.status(400).json({ success: false, message: "All fields are required" })
+      return failure(res, "All fields are required", 400)
     }
 
     const passwordReq = validatePassword(newPassword)
     if (!isPasswordStrongEnough(passwordReq)) {
-      return res.status(400).json({ success: false, message: "Password does not meet all requirements" })
+      return failure(res, "Password does not meet all requirements", 400)
     }
 
     if (newPassword !== confirmPassword) {
-      return res.status(400).json({ success: false, message: "Passwords do not match" })
+      return failure(res, "Passwords do not match", 400)
     }
 
     const result = await updatePassword({ token, newPassword, confirmPassword })
     if (!result.success) {
-      return res.status(400).json(result)
+      return failure(res, result.message, 400)
     }
 
     return res.json(result)
   } catch (error) {
     log.error("Update password error", error)
-    return res.status(500).json({ success: false, message: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

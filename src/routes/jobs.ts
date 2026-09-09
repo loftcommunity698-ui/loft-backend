@@ -4,7 +4,9 @@ import { requireAuth } from "../middleware/auth"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
 import { listJobs, listTags, getJobFacets } from "../services/jobs"
-import { success, paginated, created, noContent } from "../lib/response"
+import { success, paginated, created, noContent, failure } from "../lib/response"
+import { sendEmail, emailTemplates, shouldSendEmail } from "../lib/email"
+import { sendEvent } from "../lib/sse"
 
 const router = Router()
 const log = createLogger("jobs")
@@ -16,7 +18,7 @@ router.get("/tags/search", async (req: Request, res: Response) => {
     success(res, tags)
   } catch (error) {
     log.error("List tags error", error)
-    return res.status(500).json({ success: false, error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -26,7 +28,7 @@ router.get("/facets", async (_req: Request, res: Response) => {
     success(res, await getJobFacets())
   } catch (error) {
     log.error("Get job facets error", error)
-    return res.status(500).json({ success: false, error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -49,7 +51,7 @@ router.get("/", async (req: Request, res: Response) => {
     paginated(res, result.jobs, result.pagination.total, result.pagination.cursor ?? undefined)
   } catch (error) {
     log.error("List jobs error", error)
-    return res.status(500).json({ success: false, error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -57,11 +59,11 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     const job = await db.job.findUnique({ where: { id: req.params.id } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
+    if (!job) return failure(res, "Job not found", 404)
     success(res, job)
   } catch (error) {
     log.error("Get job error", error)
-    return res.status(500).json({ success: false, error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -69,10 +71,10 @@ router.get("/:id", async (req: Request, res: Response) => {
 router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
     const { title, company, companyLogo, location, remote, salaryMin, salaryMax, currency, tags, category, seniority, description, requirements, responsibilities, featured } = req.body
     if (!title || !company || !location || !category || !seniority || !description) {
-      return res.status(400).json({ success: false, error: "Missing required fields" })
+      return failure(res, "Missing required fields", 400)
     }
     const job = await db.job.create({
       data: {
@@ -93,7 +95,7 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
     created(res, job)
   } catch (error) {
     log.error("Create job error", error)
-    return res.status(500).json({ success: false, error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -101,10 +103,10 @@ router.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =
 router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
     const job = await db.job.findUnique({ where: { id: req.params.id } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
-    if (job.employerId !== user.clerkId) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!job) return failure(res, "Job not found", 404)
+    if (job.employerId !== user.clerkId) return failure(res, "Not authorized", 403)
 
     const allowed = ["title", "company", "companyLogo", "location", "remote", "salaryMin", "salaryMax", "currency", "tags", "category", "seniority", "description", "requirements", "responsibilities", "featured"]
     const updateData: Record<string, unknown> = {}
@@ -115,7 +117,7 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
     success(res, updated)
   } catch (error) {
     log.error("Update job error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -123,15 +125,15 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
 router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
     const job = await db.job.findUnique({ where: { id: req.params.id } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
-    if (job.employerId !== user.clerkId) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!job) return failure(res, "Job not found", 404)
+    if (job.employerId !== user.clerkId) return failure(res, "Not authorized", 403)
     await db.job.delete({ where: { id: job.id } })
     noContent(res)
   } catch (error) {
     log.error("Delete job error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -139,19 +141,19 @@ router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respon
 router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return res.status(404).json({ success: false, error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const jobId = req.params.id
     const job = await db.job.findUnique({ where: { id: jobId } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
+    if (!job) return failure(res, "Job not found", 404)
 
     const existing = await db.jobApplication.findFirst({ where: { userId: user.clerkId, jobId } })
-    if (existing) return res.status(400).json({ success: false, error: "Already applied to this job" })
+    if (existing) return failure(res, "Already applied to this job", 400)
 
     const { coverLetter, resumeUrl } = req.body
-    if (coverLetter && coverLetter.length > 5000) return res.status(400).json({ success: false, error: "Cover letter too long (max 5000 characters)" })
+    if (coverLetter && coverLetter.length > 5000) return failure(res, "Cover letter too long (max 5000 characters)", 400)
     const application = await db.jobApplication.create({
-      data: { userId: user.clerkId, jobId, coverLetter, resumeUrl: resumeUrl || null, status: "PENDING" },
+      data: { userId: user.clerkId, jobId, coverLetter: coverLetter || undefined, resumeUrl: resumeUrl || null, status: "PENDING" },
       include: {
         job: { include: { employer: { select: { firstName: true, lastName: true, email: true } } } },
         user: { select: { firstName: true, lastName: true, email: true } },
@@ -160,12 +162,53 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
 
     await db.notification.create({
       data: { userId: job.employerId, title: "New Application", message: `New application for ${job.title}`, type: "APPLICATION_RECEIVED", data: { applicationId: application.id, jobId } },
+      select: { id: true },
     })
+
+    await db.notification.create({
+      data: {
+        userId: user.clerkId,
+        title: "Application submitted",
+        message: `Your application for ${job.title} was submitted. Check your email for the next steps.`,
+        type: "APPLICATION_RECEIVED",
+        link: `/applications/${application.id}`,
+        data: { applicationId: application.id, jobId },
+      },
+      select: { id: true },
+    })
+
+    sendEvent(job.employerId, "new_notification", {
+      title: "New Application",
+      message: `New application for ${job.title}`,
+      type: "APPLICATION_RECEIVED",
+      link: `/hiring-workflow`,
+    })
+
+    sendEvent(user.clerkId, "new_notification", {
+      title: "Application submitted",
+      message: `Your application for ${job.title} was submitted. Check your email for the next steps.`,
+      type: "APPLICATION_RECEIVED",
+      link: `/applications/${application.id}`,
+    })
+
+    const companyName = application.job.company || job.company || "LoftCommunity"
+    const applicantName =
+      [application.user.firstName, application.user.lastName].filter(Boolean).join(" ") || "A candidate"
+
+    const applicantShouldNotify = await shouldSendEmail(user.clerkId, "applicationUpdates")
+    if (applicantShouldNotify) {
+      await sendEmail(emailTemplates.applicationSubmitted(job.title, companyName, user.email))
+    }
+
+    const employerShouldNotify = await shouldSendEmail(job.employerId, "applicationUpdates")
+    if (employerShouldNotify) {
+      await sendEmail(emailTemplates.newApplicant(job.title, applicantName, application.job.employer.email))
+    }
 
     return res.status(201).json({ success: true, application: { id: application.id, status: application.status, appliedAt: application.appliedAt } })
   } catch (error) {
     log.error("Apply error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -177,11 +220,11 @@ router.get("/:id/candidates", requireAuth, async (req: AuthenticatedRequest, res
     const jobId = req.params.id
 
     const job = await db.job.findUnique({ where: { id: jobId } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
+    if (!job) return failure(res, "Job not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (!user) return res.status(403).json({ success: false, error: "Not authorized" })
-    if (job.employerId !== user.clerkId) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
+    if (job.employerId !== user.clerkId) return failure(res, "Not authorized", 403)
 
     const applications = await db.jobApplication.findMany({
       where: { jobId: job.id },
@@ -202,7 +245,7 @@ router.get("/:id/candidates", requireAuth, async (req: AuthenticatedRequest, res
     return res.json({ job: { id: job.id, title: job.title, tags: jobTags }, candidates, total: candidates.length })
   } catch (error) {
     log.error("Candidates error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -213,10 +256,10 @@ router.get("/:id/metrics", requireAuth, async (req: AuthenticatedRequest, res: R
     const jobId = req.params.id
 
     const job = await db.job.findUnique({ where: { id: jobId } })
-    if (!job) return res.status(404).json({ success: false, error: "Job not found" })
+    if (!job) return failure(res, "Job not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail } })
-    if (job.employerId !== user?.clerkId) return res.status(403).json({ success: false, error: "Not authorized" })
+    if (job.employerId !== user?.clerkId) return failure(res, "Not authorized", 403)
 
     const apps = await db.jobApplication.findMany({
       where: { jobId },
@@ -241,7 +284,7 @@ router.get("/:id/metrics", requireAuth, async (req: AuthenticatedRequest, res: R
     })
   } catch (error) {
     log.error("Metrics error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -249,17 +292,17 @@ router.get("/:id/metrics", requireAuth, async (req: AuthenticatedRequest, res: R
 router.post("/:id/report", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return res.status(404).json({ success: false, error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const jobId = req.params.id
     const { reason } = req.body
-    if (!reason) return res.status(400).json({ success: false, error: "Reason is required" })
+    if (!reason) return failure(res, "Reason is required", 400)
 
     await db.report.create({ data: { reporterId: user.clerkId, reportedType: "JOB", reportedId: jobId, reason } })
     return res.json({ success: true, message: "Report submitted. We will review it shortly." })
   } catch (error) {
     log.error("Report error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

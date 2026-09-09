@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth"
 import { sendEmail, emailTemplates, shouldSendEmail } from "../lib/email"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("applications")
@@ -19,7 +20,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       where: { email: userEmail },
       include: { companyMemberships: { where: { role: "ADMIN" }, take: 1 } },
     })
-    if (!user) return res.status(404).json({ error: "User not found" })
+    if (!user) return failure(res, "User not found", 404)
 
     const isAdmin = user.companyMemberships.length > 0
 
@@ -55,7 +56,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
     })))
   } catch (error) {
     log.error("List applications error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -72,15 +73,15 @@ router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
         interview: true,
       },
     })
-    if (!application) return res.status(404).json({ error: "Application not found" })
+    if (!application) return failure(res, "Application not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const isApplicant = application.userId === user.clerkId
     const isEmployer = application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isApplicant && !isEmployer && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isApplicant && !isEmployer && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     return res.json({
       id: application.id, jobId: application.jobId, userId: application.userId,
@@ -96,7 +97,7 @@ router.get("/:id", requireAuth, async (req: AuthenticatedRequest, res: Response)
     })
   } catch (error) {
     log.error("Get application error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -105,23 +106,23 @@ router.post("/:id/interviews", requireAuth, async (req: AuthenticatedRequest, re
   try {
     const userEmail = req.user!.email
     const applicationId = parseInt(req.params.id)
-    if (isNaN(applicationId)) return res.status(400).json({ error: "Invalid application ID" })
+    if (isNaN(applicationId)) return failure(res, "Invalid application ID", 400)
 
     const application = await db.jobApplication.findUnique({ where: { id: applicationId }, include: { job: true } })
-    if (!application) return res.status(404).json({ error: "Application not found" })
+    if (!application) return failure(res, "Application not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const isOwner = application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isOwner && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isOwner && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     const existingInterview = await db.interview.findUnique({ where: { applicationId } })
-    if (existingInterview) return res.status(409).json({ error: "Interview already scheduled for this application" })
+    if (existingInterview) return failure(res, "Interview already scheduled for this application", 409)
 
     const { scheduledAt, duration, type, meetingLink, location } = req.body
-    if (!scheduledAt || !type) return res.status(400).json({ error: "scheduledAt and type are required" })
+    if (!scheduledAt || !type) return failure(res, "scheduledAt and type are required", 400)
 
     const interview = await db.interview.create({
       data: { applicationId, scheduledAt: new Date(scheduledAt), duration: duration || 60, type, meetingLink: meetingLink || null, location: location || null },
@@ -135,7 +136,7 @@ router.post("/:id/interviews", requireAuth, async (req: AuthenticatedRequest, re
     return res.json({ success: true, interview, applicationStatus: "INTERVIEW" })
   } catch (error) {
     log.error("Schedule interview error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -147,20 +148,20 @@ router.patch("/:id/notes", requireAuth, async (req: AuthenticatedRequest, res: R
 
     const userEmail = req.user!.email
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const application = await db.jobApplication.findUnique({ where: { id: applicationId }, include: { job: true } })
-    if (!application) return res.status(404).json({ error: "Application not found" })
+    if (!application) return failure(res, "Application not found", 404)
 
     const isOwner = application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isOwner && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isOwner && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     const updated = await db.jobApplication.update({ where: { id: applicationId }, data: { employerNotes: notes } })
     return res.json({ success: true, employerNotes: updated.employerNotes })
   } catch (error) {
     log.error("Update notes error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -172,20 +173,20 @@ router.patch("/:id/shortlist", requireAuth, async (req: AuthenticatedRequest, re
     const { isShortlisted } = req.body
 
     const application = await db.jobApplication.findUnique({ where: { id: applicationId }, include: { job: true } })
-    if (!application) return res.status(404).json({ error: "Application not found" })
+    if (!application) return failure(res, "Application not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const isOwner = application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isOwner && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isOwner && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     const updated = await db.jobApplication.update({ where: { id: applicationId }, data: { isShortlisted } })
     return res.json({ success: true, isShortlisted: updated.isShortlisted })
   } catch (error) {
     log.error("Shortlist error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 
@@ -197,23 +198,23 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
     const { status, notes } = req.body
 
     const validStatuses = ["PENDING", "REVIEWING", "SHORTLISTED", "INTERVIEW", "OFFERED", "HIRED", "REJECTED"]
-    if (!validStatuses.includes(status)) return res.status(400).json({ error: "Invalid status" })
+    if (!validStatuses.includes(status)) return failure(res, "Invalid status", 400)
 
     const application = await db.jobApplication.findUnique({
       where: { id: applicationId },
       include: { user: true, job: true },
     })
-    if (!application) return res.status(404).json({ error: "Application not found" })
+    if (!application) return failure(res, "Application not found", 404)
 
     const user = await db.user.findUnique({
       where: { email: userEmail },
       include: { companyMemberships: { take: 1 } },
     })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const isOwner = application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isOwner && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isOwner && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     const updated = await db.jobApplication.update({
       where: { id: applicationId },
@@ -241,7 +242,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
     return res.json({ success: true, application: { id: updated.id, status: updated.status, reviewedAt: updated.reviewedAt, interviewAt: updated.interviewAt } })
   } catch (error) {
     log.error("Update status error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

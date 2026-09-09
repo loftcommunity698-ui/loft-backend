@@ -156,7 +156,7 @@ Tokens are signed using `jsonwebtoken` with `env.jwtSecret`. The secret is requi
 }
 ```
 
-Token expiry: **30 days**.
+Token expiry: **15 minutes**.
 
 ### Cookie Configuration
 
@@ -166,7 +166,7 @@ httpOnly:      true
 secure:        true (production only)
 sameSite:      "lax"
 path:          "/"
-maxAge:        2592000 seconds (30 days)
+maxAge:        900 seconds (15 minutes)
 ```
 
 ### Token Extraction
@@ -695,7 +695,7 @@ Run: `ADMIN_EMAIL=admin@loftcommunity.com ADMIN_PASSWORD=secret npx tsx scripts/
    - Cancel/pause subscription
    - Invoice history
 
-2. **No unit tests**: The backend has no test files or test framework configured. The only test infrastructure is the E2E setup/teardown endpoints in `routes/test.ts` (dev-only).
+2. **Limited unit tests**: The backend has minimal test coverage with only `src/__tests__/health.test.ts` (2 tests) and `src/__tests__/jobs.test.ts` (7 tests). There is no test framework configured in `package.json` (no test script), though Jest tests exist. The E2E setup/teardown endpoints in `routes/test.ts` (dev-only) are separate infrastructure.
 
 3. **`prisma db push` instead of migrations**: The `package.json` scripts use `prisma db push` which directly syncs the schema to the database without generating versioned migration files. This means no rollback capability and no migration history.
 

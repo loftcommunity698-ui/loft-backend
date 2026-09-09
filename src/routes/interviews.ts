@@ -3,6 +3,7 @@ import { db } from "../lib/db"
 import { requireAuth } from "../middleware/auth"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("interviews")
@@ -12,20 +13,20 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
   try {
     const userEmail = req.user!.email
     const interviewId = parseInt(req.params.id)
-    if (isNaN(interviewId)) return res.status(400).json({ error: "Invalid interview ID" })
+    if (isNaN(interviewId)) return failure(res, "Invalid interview ID", 400)
 
     const interview = await db.interview.findUnique({
       where: { id: interviewId },
       include: { application: { include: { job: true } } },
     })
-    if (!interview) return res.status(404).json({ error: "Interview not found" })
+    if (!interview) return failure(res, "Interview not found", 404)
 
     const user = await db.user.findUnique({ where: { email: userEmail }, include: { companyMemberships: { take: 1 } } })
-    if (!user) return res.status(403).json({ error: "Not authorized" })
+    if (!user) return failure(res, "Not authorized", 403)
 
     const isOwner = interview.application.job.employerId === user.clerkId
     const isCompanyMember = user.companyMemberships.length > 0
-    if (!isOwner && !isCompanyMember) return res.status(403).json({ error: "Not authorized" })
+    if (!isOwner && !isCompanyMember) return failure(res, "Not authorized", 403)
 
     const body = req.body
     const { status, notes, feedback, rating, completed, scheduledAt, duration, type, meetingLink, location } = body
@@ -46,7 +47,7 @@ router.patch("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respons
     return res.json({ success: true, interview: updated })
   } catch (error) {
     log.error("Update interview error", error)
-    return res.status(500).json({ error: "Internal server error" })
+    return failure(res, "Internal server error", 500)
   }
 })
 

@@ -1,0 +1,49 @@
+services:
+  # --- Loft API web service ---
+  - type: web
+    name: loft-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: FRONTEND_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
+      - key: STRIPE_SECRET
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: KEEPALIVE_ENABLED
+        value: "true"
+      - key: KEEPALIVE_URL
+        value: https://loft-backend-cl1n.onrender.com/api/health
+      - key: KEEPALIVE_INTERVAL_MIN
+        value: "10"
+
+  # --- Optional keep-alive cron (paid; Render cron has no free tier) ---
+  # Deploying via Blueprint uses the pricing plan you select during creation.
+  # - type: cron
+  #   name: loft-backend-keepalive
+  #   runtime: node
+  #   plan: starter
+  #   schedule: "*/10 * * * *"
+  #   buildCommand: "true"
+  #   startCommand: node dist/scripts/keepalive.js
+  #   envVars:
+  #     - key: PING_URL
+  #       value: https://loft-backend-cl1n.onrender.com/api/health

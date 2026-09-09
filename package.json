@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc",
-    "start": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "keepalive": "tsx src/scripts/keepalive.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "prisma generate",
@@ -26,8 +27,7 @@
     "stripe": "^14.21.0",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
-    "uploadthing": "^7.7.4",
-    "zod": "^3.22.4"
+    "uploadthing": "^7.7.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

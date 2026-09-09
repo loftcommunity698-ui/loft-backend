@@ -4,6 +4,7 @@ import { addClient } from "../lib/sse"
 import { db } from "../lib/db"
 import { rateLimit } from "../lib/rate-limit"
 import { createLogger } from "../lib/logger"
+import { failure } from "../lib/response"
 
 const router = Router()
 const log = createLogger("sse")
@@ -13,31 +14,31 @@ router.get("/subscribe", async (req: Request, res: Response) => {
     const ip = req.ip || req.socket.remoteAddress || "unknown"
     const { success: withinLimit } = await rateLimit(`sse:${ip}`, 20, 60000)
     if (!withinLimit) {
-      res.status(429).json({ error: "Too many connection attempts" })
+      failure(res, "Too many connection attempts", 429)
       return
     }
 
     const token = extractToken(req)
     if (!token) {
-      res.status(401).json({ error: "Unauthorized" })
+      failure(res, "Unauthorized", 401)
       return
     }
 
     const jwtUser = verifyToken(token)
     if (!jwtUser) {
-      res.status(401).json({ error: "Unauthorized" })
+      failure(res, "Unauthorized", 401)
       return
     }
 
     const user = await db.user.findUnique({ where: { clerkId: jwtUser.clerkId } })
     if (!user) {
-      res.status(401).json({ error: "User not found" })
+      failure(res, "User not found", 401)
       return
     }
 
     const added = addClient(user.clerkId, res)
     if (!added) {
-      res.status(429).json({ error: "Too many connections" })
+      failure(res, "Too many connections", 429)
       return
     }
 
@@ -51,7 +52,7 @@ router.get("/subscribe", async (req: Request, res: Response) => {
   } catch (err) {
     log.error("SSE subscribe error", err)
     if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" })
+      failure(res, "Internal server error", 500)
     }
   }
 })
