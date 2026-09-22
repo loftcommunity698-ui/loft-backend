@@ -150,10 +150,15 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
     const existing = await db.jobApplication.findFirst({ where: { userId: user.clerkId, jobId } })
     if (existing) return failure(res, "Already applied to this job", 400)
 
-    const { coverLetter, resumeUrl } = req.body
+    const { coverLetter, resumeUrl, contactEmail } = req.body
     if (coverLetter && coverLetter.length > 5000) return failure(res, "Cover letter too long (max 5000 characters)", 400)
+    const normalizedContactEmail = contactEmail ? String(contactEmail).trim().toLowerCase() : undefined
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (normalizedContactEmail && !emailRegex.test(normalizedContactEmail)) {
+      return failure(res, "Invalid contact email", 400)
+    }
     const application = await db.jobApplication.create({
-      data: { userId: user.clerkId, jobId, coverLetter: coverLetter || undefined, resumeUrl: resumeUrl || null, status: "PENDING" },
+      data: { userId: user.clerkId, jobId, coverLetter: coverLetter || undefined, resumeUrl: resumeUrl || null, contactEmail: normalizedContactEmail || null, status: "PENDING" },
       include: {
         job: { include: { employer: { select: { firstName: true, lastName: true, email: true } } } },
         user: { select: { firstName: true, lastName: true, email: true } },
@@ -169,7 +174,7 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
       data: {
         userId: user.clerkId,
         title: "Application submitted",
-        message: `Your application for ${job.title} was submitted. Check your email for the next steps.`,
+        message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
         type: "APPLICATION_RECEIVED",
         link: `/applications/${application.id}`,
         data: { applicationId: application.id, jobId },
@@ -186,7 +191,7 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
 
     sendEvent(user.clerkId, "new_notification", {
       title: "Application submitted",
-      message: `Your application for ${job.title} was submitted. Check your email for the next steps.`,
+      message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
       type: "APPLICATION_RECEIVED",
       link: `/applications/${application.id}`,
     })
@@ -197,7 +202,7 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
 
     const applicantShouldNotify = await shouldSendEmail(user.clerkId, "applicationUpdates")
     if (applicantShouldNotify) {
-      await sendEmail(emailTemplates.applicationSubmitted(job.title, companyName, user.email))
+      await sendEmail(emailTemplates.applicationSubmitted(job.title, companyName, normalizedContactEmail || user.email))
     }
 
     const employerShouldNotify = await shouldSendEmail(job.employerId, "applicationUpdates")

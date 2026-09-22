@@ -16,7 +16,6 @@ import usersRoutes from "./routes/users"
 import notificationsRoutes from "./routes/notifications"
 import companiesRoutes from "./routes/companies"
 import adminRoutes from "./routes/admin"
-import messagesRoutes from "./routes/messages"
 import skillsRoutes from "./routes/skills"
 import interviewsRoutes from "./routes/interviews"
 import paymentRoutes from "./routes/payment"
@@ -45,7 +44,6 @@ app.use("/api/users", usersRoutes)
 app.use("/api/notifications", notificationsRoutes)
 app.use("/api/companies", companiesRoutes)
 app.use("/api/admin", adminRoutes)
-app.use("/api/messages", messagesRoutes)
 app.use("/api/skills", skillsRoutes)
 app.use("/api/interviews", interviewsRoutes)
 app.use("/api/payment", paymentRoutes)

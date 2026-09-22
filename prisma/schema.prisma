@@ -355,6 +355,7 @@ model JobApplication {
   // Application Data
   coverLetter     String?         @db.Text
   resumeUrl       String?
+  contactEmail    String?
   
   // Status
   status          ApplicationStatus @default(PENDING)

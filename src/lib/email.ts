@@ -67,7 +67,8 @@ export const emailTemplates = {
       <html>
         <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #10b981;">Application Submitted!</h1>
-          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> has been submitted successfully.</p>
+          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> has been submitted and will be reviewed.</p>
+          <p>We will carry out any further communication about this application through your email, so please keep an eye on your inbox.</p>
           <p>Here are the next steps:</p>
           <ol style="line-height: 1.8; color: #333;">
             <li>The employer will review your application and resume.</li>
@@ -99,25 +100,6 @@ export const emailTemplates = {
           <a href="${baseUrl}/dashboard/applications" 
              style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
             View Details
-          </a>
-        </body>
-      </html>
-    `,
-  }),
-
-  newMessage: (senderName: string, to: string) => ({
-    to,
-    subject: `New Message from ${senderName}`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">New Message</h1>
-          <p>You have received a new message from <strong>${escapeHtml(senderName)}</strong>.</p>
-          <p>Log in to LoftCommunity to view and respond to the message.</p>
-          <a href="${baseUrl}/dashboard/messages" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            View Message
           </a>
         </body>
       </html>
