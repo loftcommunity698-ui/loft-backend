@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express"
 import { db } from "../lib/db"
-import { requireAuth } from "../middleware/auth"
+import { requireAuth, optionalAuth } from "../middleware/auth"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
 import { listJobs, listTags, getJobFacets } from "../services/jobs"
@@ -137,28 +137,54 @@ router.delete("/:id", requireAuth, async (req: AuthenticatedRequest, res: Respon
   }
 })
 
-// POST /api/jobs/:id/apply - Apply to a job
-router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+// POST /api/jobs/:id/apply - Apply to a job (authenticated users or anonymous guests)
+router.post("/:id/apply", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const user = await db.user.findUnique({ where: { email: req.user!.email } })
-    if (!user) return failure(res, "User not found", 404)
+    const user = req.user ? await db.user.findUnique({ where: { email: req.user.email } }) : null
 
     const jobId = req.params.id
     const job = await db.job.findUnique({ where: { id: jobId } })
     if (!job) return failure(res, "Job not found", 404)
 
-    const existing = await db.jobApplication.findFirst({ where: { userId: user.clerkId, jobId } })
-    if (existing) return failure(res, "Already applied to this job", 400)
-
-    const { coverLetter, resumeUrl, contactEmail } = req.body
-    if (coverLetter && coverLetter.length > 5000) return failure(res, "Cover letter too long (max 5000 characters)", 400)
-    const normalizedContactEmail = contactEmail ? String(contactEmail).trim().toLowerCase() : undefined
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (normalizedContactEmail && !emailRegex.test(normalizedContactEmail)) {
-      return failure(res, "Invalid contact email", 400)
+    const { coverLetter, resumeUrl, contactEmail, guestName: rawGuestName, guestEmail: rawGuestEmail } = req.body
+
+    let guestName: string | undefined
+    let guestEmail: string | undefined
+    if (!user) {
+      guestName = typeof rawGuestName === "string" ? rawGuestName.trim() : ""
+      guestEmail = typeof rawGuestEmail === "string" ? rawGuestEmail.trim().toLowerCase() : ""
+      if (!guestName || guestName.length > 120 || !emailRegex.test(guestEmail)) {
+        return failure(res, "Guest name and email are required to apply", 400)
+      }
     }
+
+    if (coverLetter && coverLetter.length > 5000) return failure(res, "Cover letter too long (max 5000 characters)", 400)
+
+    const normalizedContactEmail = contactEmail ? String(contactEmail).trim().toLowerCase() : undefined
+    if (user) {
+      if (normalizedContactEmail && !emailRegex.test(normalizedContactEmail)) {
+        return failure(res, "Invalid contact email", 400)
+      }
+    }
+    const effectiveContactEmail = user ? normalizedContactEmail || null : guestEmail
+
+    const existing = user
+      ? await db.jobApplication.findFirst({ where: { userId: user.clerkId, jobId } })
+      : await db.jobApplication.findFirst({ where: { guestEmail, jobId } })
+    if (existing) return failure(res, user ? "Already applied to this job" : "You've already applied to this job with this email", 400)
+
     const application = await db.jobApplication.create({
-      data: { userId: user.clerkId, jobId, coverLetter: coverLetter || undefined, resumeUrl: resumeUrl || null, contactEmail: normalizedContactEmail || null, status: "PENDING" },
+      data: {
+        userId: user?.clerkId ?? null,
+        guestName: user ? undefined : guestName,
+        guestEmail: user ? undefined : guestEmail,
+        jobId: job.id,
+        coverLetter: coverLetter || undefined,
+        resumeUrl: resumeUrl || null,
+        contactEmail: effectiveContactEmail,
+        status: "PENDING",
+      },
       include: {
         job: { include: { employer: { select: { firstName: true, lastName: true, email: true } } } },
         user: { select: { firstName: true, lastName: true, email: true } },
@@ -170,17 +196,19 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
       select: { id: true },
     })
 
-    await db.notification.create({
-      data: {
-        userId: user.clerkId,
-        title: "Application submitted",
-        message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
-        type: "APPLICATION_RECEIVED",
-        link: `/applications/${application.id}`,
-        data: { applicationId: application.id, jobId },
-      },
-      select: { id: true },
-    })
+    if (user) {
+      await db.notification.create({
+        data: {
+          userId: user.clerkId,
+          title: "Application submitted",
+          message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
+          type: "APPLICATION_RECEIVED",
+          link: `/applications/${application.id}`,
+          data: { applicationId: application.id, jobId },
+        },
+        select: { id: true },
+      })
+    }
 
     sendEvent(job.employerId, "new_notification", {
       title: "New Application",
@@ -189,22 +217,22 @@ router.post("/:id/apply", requireAuth, async (req: AuthenticatedRequest, res: Re
       link: `/hiring-workflow`,
     })
 
-    sendEvent(user.clerkId, "new_notification", {
-      title: "Application submitted",
-      message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
-      type: "APPLICATION_RECEIVED",
-      link: `/applications/${application.id}`,
-    })
+    if (user) {
+      sendEvent(user.clerkId, "new_notification", {
+        title: "Application submitted",
+        message: `Your application for ${job.title} has been submitted and will be reviewed. We will contact you via email for any further updates.`,
+        type: "APPLICATION_RECEIVED",
+        link: `/applications/${application.id}`,
+      })
+    }
 
     const companyName = application.job.company || job.company || "LoftCommunity"
     const applicantName =
-      [application.user.firstName, application.user.lastName].filter(Boolean).join(" ") || "A candidate"
+      [application.user?.firstName, application.user?.lastName].filter(Boolean).join(" ") ||
+      application.guestName ||
+      "A candidate"
 
-    const applicantShouldNotify = await shouldSendEmail(user.clerkId, "applicationUpdates")
-    if (applicantShouldNotify) {
-      await sendEmail(emailTemplates.applicationSubmitted(job.title, companyName, normalizedContactEmail || user.email))
-    }
-
+    // Applicant confirmation email is delivered client-side via EmailJS.
     const employerShouldNotify = await shouldSendEmail(job.employerId, "applicationUpdates")
     if (employerShouldNotify) {
       await sendEmail(emailTemplates.newApplicant(job.title, applicantName, application.job.employer.email))
@@ -238,10 +266,10 @@ router.get("/:id/candidates", requireAuth, async (req: AuthenticatedRequest, res
 
     const jobTags = job.tags || []
     const candidates = applications.map((app: any) => {
-      const userSkills = (app.user.profile?.skillsRelation || []).map((s: any) => s.skill.name)
+      const userSkills = (app.user?.profile?.skillsRelation || []).map((s: any) => s.skill.name)
       const matchedSkills = jobTags.filter((t: string) => userSkills.includes(t)).length
       const matchScore = jobTags.length > 0 ? Math.round((matchedSkills / jobTags.length) * 100) : 0
-      return { id: app.id, status: app.status, appliedAt: app.appliedAt, coverLetter: app.coverLetter, matchScore, matchedSkills, totalRequired: jobTags.length, candidate: { id: app.user.id, clerkId: app.user.clerkId, name: app.user.name, firstName: app.user.firstName, lastName: app.user.lastName, email: app.user.email, profileImage: app.user.profileImage, profile: app.user.profile } }
+      return { id: app.id, status: app.status, appliedAt: app.appliedAt, coverLetter: app.coverLetter, matchScore, matchedSkills, totalRequired: jobTags.length, candidate: app.user ? { id: app.user.id, clerkId: app.user.clerkId, name: app.user.name, firstName: app.user.firstName, lastName: app.user.lastName, email: app.user.email, profileImage: app.user.profileImage, profile: app.user.profile } : null }
     })
 
     if (sort === "date") candidates.sort((a: any, b: any) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime())
@@ -274,7 +302,7 @@ router.get("/:id/metrics", requireAuth, async (req: AuthenticatedRequest, res: R
     const count = (s: string) => apps.filter(a => a.status === s).length
     const jobTags = job.tags || []
     const scores = apps.map(app => {
-      const userSkills = (app.user.profile?.skillsRelation || []).map(s => s.skill.name)
+      const userSkills = (app.user?.profile?.skillsRelation || []).map(s => s.skill.name)
       return jobTags.length > 0 ? Math.round((jobTags.filter(t => userSkills.includes(t)).length / jobTags.length) * 100) : 0
     })
     const avgMatchScore = scores.length > 0 ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0

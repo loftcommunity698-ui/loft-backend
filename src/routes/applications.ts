@@ -52,7 +52,7 @@ router.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       englishTestRequired: app.englishTestRequired, employerNotes: app.employerNotes,
       isShortlisted: app.isShortlisted,
       job: { id: app.job.id, title: app.job.title, location: app.job.location, company: app.job.company, companyLogo: app.job.companyLogo, remote: app.job.remote, category: app.job.category, seniority: app.job.seniority, tags: app.job.tags },
-      candidate: { id: app.user.id, firstName: app.user.firstName, lastName: app.user.lastName, email: app.user.email, profileImage: app.user.profileImage },
+      candidate: app.user ? { id: app.user.id, firstName: app.user.firstName, lastName: app.user.lastName, email: app.user.email, profileImage: app.user.profileImage } : null,
     })))
   } catch (error) {
     log.error("List applications error", error)
@@ -129,9 +129,11 @@ router.post("/:id/interviews", requireAuth, async (req: AuthenticatedRequest, re
     })
 
     await db.jobApplication.update({ where: { id: applicationId }, data: { status: "INTERVIEW", interviewAt: new Date(scheduledAt) } })
-    await db.notification.create({
-      data: { userId: application.userId, title: "Interview Scheduled", message: `Your interview has been scheduled for ${new Date(scheduledAt).toLocaleString()}`, type: "INTERVIEW_SCHEDULED", link: `/applications/${applicationId}` },
-    })
+    if (application.userId) {
+      await db.notification.create({
+        data: { userId: application.userId, title: "Interview Scheduled", message: `Your interview has been scheduled for ${new Date(scheduledAt).toLocaleString()}`, type: "INTERVIEW_SCHEDULED", link: `/applications/${applicationId}` },
+      })
+    }
 
     return res.json({ success: true, interview, applicationStatus: "INTERVIEW" })
   } catch (error) {
@@ -228,15 +230,19 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
       },
     })
 
-    const notificationType = status === "REJECTED" ? "APPLICATION_REJECTED" : "APPLICATION_SHORTLISTED"
-    await db.notification.create({
-      data: { userId: application.userId, title: "Application Status Update", message: `Your application for ${application.job.title} is now ${status.toLowerCase()}`, type: notificationType, link: `/applications/${application.id}` },
-    })
+    if (application.userId) {
+      const notificationType = status === "REJECTED" ? "APPLICATION_REJECTED" : "APPLICATION_SHORTLISTED"
+      await db.notification.create({
+        data: { userId: application.userId, title: "Application Status Update", message: `Your application for ${application.job.title} is now ${status.toLowerCase()}`, type: notificationType, link: `/applications/${application.id}` },
+      })
+    }
 
     const companyName = application.job.company || "the company"
-    const shouldNotify = await shouldSendEmail(application.userId, "applicationUpdates")
-    if (shouldNotify) {
-      await sendEmail(emailTemplates.statusUpdate(application.job.title, companyName, status.toLowerCase(), application.user.email))
+    if (application.userId && application.user) {
+      const shouldNotify = await shouldSendEmail(application.userId, "applicationUpdates")
+      if (shouldNotify) {
+        await sendEmail(emailTemplates.statusUpdate(application.job.title, companyName, status.toLowerCase(), application.user.email))
+      }
     }
 
     return res.json({ success: true, application: { id: updated.id, status: updated.status, reviewedAt: updated.reviewedAt, interviewAt: updated.interviewAt } })

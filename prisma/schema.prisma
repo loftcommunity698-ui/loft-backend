@@ -344,15 +344,17 @@ model Job {
 model JobApplication {
   id              Int             @id @default(autoincrement())
   
-  // Applicant
-  userId          String
-  user            User            @relation(fields: [userId], references: [clerkId])
+  // Applicant (nullable for anonymous guest applications)
+  userId          String?
+  user            User?           @relation(fields: [userId], references: [clerkId])
   
   // Job
   jobId           String
   job             Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
   
   // Application Data
+  guestName       String?
+  guestEmail      String?
   coverLetter     String?         @db.Text
   resumeUrl       String?
   contactEmail    String?
