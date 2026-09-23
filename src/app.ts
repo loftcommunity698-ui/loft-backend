@@ -24,7 +24,6 @@ import uploadthingRoutes from "./routes/uploadthing"
 import sseRoutes from "./routes/sse"
 import statsRoutes from "./routes/stats"
 import testRoutes from "./routes/test"
-import diagRoutes from "./routes/diag"
 
 const app = express()
 
@@ -55,10 +54,6 @@ app.use("/api/stats", statsRoutes)
 
 if (env.isDev) {
   app.use("/api/test", testRoutes)
-}
-
-if (process.env.DIAG === "1") {
-  app.use("/api/_diag", diagRoutes)
 }
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec))
