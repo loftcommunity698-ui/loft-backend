@@ -14,7 +14,6 @@ import {
   isPasswordStrongEnough,
   isValidEmail,
 } from "../lib/auth-service"
-import { sendEmail } from "../lib/email"
 import { createLogger } from "../lib/logger"
 import env from "../config/env"
 import { failure } from "../lib/response"
@@ -94,6 +93,8 @@ router.post("/register", async (req: Request, res: Response) => {
       },
     })
 
+    const verificationUrl = `${env.frontendUrl}/verify-email?token=${verificationToken}`
+
     if (result.user?.clerkId) {
       await db.notification.create({
         data: {
@@ -116,6 +117,7 @@ router.post("/register", async (req: Request, res: Response) => {
       success: true,
       message: "User created successfully. Please check your email to verify your account.",
       user: result.user,
+      verificationUrl,
     })
   } catch (error) {
     log.error("Register error", error)
@@ -402,17 +404,9 @@ router.post("/verify-email", async (req: Request, res: Response) => {
 
   const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`
 
-  try {
-    await sendEmail({
-      to: email,
-      subject: "Verify your LoftCommunity email",
-      html: `<p>Click <a href="${verificationUrl}">here</a> to verify your email address.</p><p>This link expires in 24 hours.</p>`,
-    })
-  } catch {
-    // Email sending failed, but token is still created
-  }
-
-  return res.json({ success: true, message: "Verification email sent" })
+  // Email delivery is handled client-side via EmailJS; return the URL so the
+  // client can send it to the user.
+  return res.json({ success: true, message: "Verification email sent", verificationUrl })
 })
 
 // POST /api/auth/reset-password

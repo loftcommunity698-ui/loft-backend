@@ -64,6 +64,8 @@ export interface AuthResponse {
   success: boolean
   message: string
   user?: AuthUser
+  verificationUrl?: string
+  resetUrl?: string
 }
 
 export interface PasswordRequirements {

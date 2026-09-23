@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs"
 import crypto from "crypto"
 import { db } from "./db"
-import { sendEmail } from "./email"
 import { createLogger } from "./logger"
 import env from "../config/env"
 import type {
@@ -162,31 +161,13 @@ export async function requestPasswordReset(email: string): Promise<AuthResponse>
   log.info("Password reset token generated", { email })
 
   const resetUrl = `${env.frontendUrl}/forgot-password?token=${token}`
-  await sendEmail({
-    to: email,
-    subject: "Reset your LoftCommunity password",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">Reset Your Password</h1>
-          <p>We received a request to reset your password for LoftCommunity.</p>
-          <p>Click the link below to set a new password. This link expires in 1 hour.</p>
-          <a href="${resetUrl}"
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            Reset Password
-          </a>
-          <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
-            If you didn't request this, you can safely ignore this email.
-          </p>
-        </body>
-      </html>
-    `,
-  })
 
+  // Email delivery is handled client-side via EmailJS; return the URL so the
+  // client can send it to the user.
   return {
     success: true,
     message: "If an account exists, a password reset link has been sent",
+    resetUrl,
   }
 }
 
