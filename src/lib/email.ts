@@ -1,11 +1,17 @@
-import { Resend } from "resend"
+import emailjs from "@emailjs/nodejs"
 import { db } from "./db"
 import { createLogger } from "./logger"
 import env from "../config/env"
 
 const log = createLogger("email")
 
-const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null
+const emailJsReady = Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
+if (emailJsReady) {
+  emailjs.init({
+    publicKey: env.emailjsPublicKey,
+    privateKey: env.emailjsPrivateKey || undefined,
+  })
+}
 
 export async function shouldSendEmail(clerkId: string, type: "applicationUpdates" | "newMessages"): Promise<boolean> {
   try {
@@ -24,36 +30,32 @@ export async function shouldSendEmail(clerkId: string, type: "applicationUpdates
 interface EmailOptions {
   to: string
   subject: string
-  html: string
+  message: string
 }
 
-export async function sendEmail({ to, subject, html }: EmailOptions) {
-  if (!resend) {
-    log.warn("Resend not configured, skipping email", { to, subject })
-    return { success: false, error: "Resend not configured" }
+export async function sendEmail({ to, subject, message }: EmailOptions) {
+  if (!emailJsReady) {
+    log.warn("EmailJS not configured, skipping email", { to, subject })
+    return { success: false, error: "EmailJS not configured" }
   }
 
   try {
-    const data = await resend.emails.send({
-      from: "LoftCommunity <noreply@loftcommunity.com>",
-      to,
+    const data = await emailjs.send(env.emailjsServiceId, env.emailjsTemplateId, {
+      to_email: to,
+      from_name: env.emailjsFromName,
+      from_email: env.emailjsFromEmail,
+      reply_to: env.emailjsFromEmail,
       subject,
-      html,
+      message,
     })
-    return { success: true, data }
+    if (data.status === 200) {
+      return { success: true, data }
+    }
+    return { success: false, error: data }
   } catch (error) {
     log.error("Email error", error)
     return { success: false, error }
   }
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
 }
 
 const baseUrl = env.frontendUrl || "http://localhost:3000"
@@ -62,105 +64,30 @@ export const emailTemplates = {
   applicationSubmitted: (jobTitle: string, companyName: string, to: string) => ({
     to,
     subject: `Application Submitted - ${jobTitle}`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">Application Submitted!</h1>
-          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> has been submitted and will be reviewed.</p>
-          <p>We will carry out any further communication about this application through your email, so please keep an eye on your inbox.</p>
-          <p>Here are the next steps:</p>
-          <ol style="line-height: 1.8; color: #333;">
-            <li>The employer will review your application and resume.</li>
-            <li>Keep your profile and availability up to date — employers check it before reaching out.</li>
-            <li>Watch your email and the notification bell for status updates (shortlisted, interviewing, offered).</li>
-            <li>If shortlisted, you may be invited to schedule an interview — respond promptly to confirm a time.</li>
-            <li>Track your application status anytime in your LoftCommunity dashboard.</li>
-          </ol>
-          <a href="${baseUrl}/dashboard/applications" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            Track Application
-          </a>
-          <p style="margin-top: 24px; color: #888; font-size: 12px;">You received this email because you applied for a position on LoftCommunity.</p>
-        </body>
-      </html>
-    `,
+    message: `Your application for ${jobTitle} at ${companyName} has been submitted and will be reviewed. Watch your inbox for status updates. Track it: ${baseUrl}/dashboard/applications`,
   }),
 
   statusUpdate: (jobTitle: string, companyName: string, status: string, to: string) => ({
     to,
     subject: `Application Status Update - ${jobTitle}`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">Status Update</h1>
-          <p>Your application for <strong>${escapeHtml(jobTitle)}</strong> at <strong>${escapeHtml(companyName)}</strong> is now <strong>${escapeHtml(status)}</strong>.</p>
-          <p>Log in to your dashboard to see more details.</p>
-          <a href="${baseUrl}/dashboard/applications" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            View Details
-          </a>
-        </body>
-      </html>
-    `,
+    message: `Your application for ${jobTitle} at ${companyName} is now ${status}. Track it: ${baseUrl}/dashboard/applications`,
   }),
 
   newApplicant: (jobTitle: string, candidateName: string, to: string) => ({
     to,
     subject: `New Applicant for ${jobTitle}`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">New Applicant</h1>
-          <p><strong>${escapeHtml(candidateName)}</strong> has applied for <strong>${escapeHtml(jobTitle)}</strong>.</p>
-          <p>Review their profile in your employer dashboard.</p>
-          <a href="${baseUrl}/employer/dashboard" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            View Candidates
-          </a>
-        </body>
-      </html>
-    `,
+    message: `${candidateName} has applied for ${jobTitle}. Review their profile: ${baseUrl}/employer/dashboard`,
   }),
 
   emailVerification: (to: string, firstName: string, verificationUrl: string) => ({
     to,
     subject: "Welcome to LoftCommunity — verify your email",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">Welcome to LoftCommunity!</h1>
-          <p>Hi ${escapeHtml(firstName)},</p>
-          <p>Your LoftCommunity account was created successfully. Click the button below to confirm your email address and start exploring job opportunities.</p>
-          <a href="${verificationUrl}" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            Verify Email
-          </a>
-          <p style="margin-top: 24px; color: #888; font-size: 12px;">You received this email because you created an account on LoftCommunity.</p>
-        </body>
-      </html>
-    `,
+    message: `Welcome to LoftCommunity, ${firstName}! Your account has been created. Confirm your email by opening this link: ${verificationUrl} (expires in 24 hours).`,
   }),
 
   passwordReset: (to: string, resetUrl: string) => ({
     to,
     subject: "Reset your LoftCommunity password",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #10b981;">Reset Your Password</h1>
-          <p>We received a request to reset your LoftCommunity password. Click the button below to choose a new password.</p>
-          <a href="${resetUrl}" 
-             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-            Reset Password
-          </a>
-          <p style="margin-top: 24px; color: #888; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
-        </body>
-      </html>
-    `,
+    message: `We received a request to reset your password. Open this link to choose a new one: ${resetUrl} (expires in 1 hour). If you didn't request this, ignore this email.`,
   }),
 }

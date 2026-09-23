@@ -5,5 +5,10 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["src/**/*.test.ts"],
+    server: {
+      deps: {
+        inline: ["@emailjs/nodejs"],
+      },
+    },
   },
 })
