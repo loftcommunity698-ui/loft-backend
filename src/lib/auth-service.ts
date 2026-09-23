@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs"
 import crypto from "crypto"
 import { db } from "./db"
 import { createLogger } from "./logger"
+import { sendEmail, emailTemplates } from "./email"
 import env from "../config/env"
 import type {
   AuthUser,
@@ -162,12 +163,18 @@ export async function requestPasswordReset(email: string): Promise<AuthResponse>
 
   const resetUrl = `${env.frontendUrl}/forgot-password?token=${token}`
 
-  // Email delivery is handled client-side via EmailJS; return the URL so the
-  // client can send it to the user.
+  try {
+    const emailResult = await sendEmail(emailTemplates.passwordReset(email.toLowerCase(), resetUrl))
+    if (!emailResult.success) {
+      log.error("Failed to send password reset email", { email })
+    }
+  } catch (error) {
+    log.error("Failed to send password reset email", error)
+  }
+
   return {
     success: true,
     message: "If an account exists, a password reset link has been sent",
-    resetUrl,
   }
 }
 

@@ -15,6 +15,7 @@ import {
   isValidEmail,
 } from "../lib/auth-service"
 import { createLogger } from "../lib/logger"
+import { sendEmail, emailTemplates } from "../lib/email"
 import env from "../config/env"
 import { failure } from "../lib/response"
 import type { AuthenticatedRequest, RegisterInput, LoginInput, OAuthInput } from "../types"
@@ -23,6 +24,17 @@ const router = Router()
 const log = createLogger("auth")
 
 const REFRESH_TOKEN_DAYS = 7
+
+async function sendVerificationEmail(email: string, firstName: string, verificationUrl: string): Promise<void> {
+  try {
+    const emailResult = await sendEmail(emailTemplates.emailVerification(email, firstName, verificationUrl))
+    if (!emailResult.success) {
+      log.error("Failed to send verification email", { email })
+    }
+  } catch (error) {
+    log.error("Failed to send verification email", error)
+  }
+}
 
 async function setAuthCookies(userId: string, res: Response): Promise<void> {
   const user = await db.user.findUnique({ where: { id: parseInt(userId) } })
@@ -95,6 +107,8 @@ router.post("/register", async (req: Request, res: Response) => {
 
     const verificationUrl = `${env.frontendUrl}/verify-email?token=${verificationToken}`
 
+    await sendVerificationEmail(email.toLowerCase(), firstName, verificationUrl)
+
     if (result.user?.clerkId) {
       await db.notification.create({
         data: {
@@ -117,7 +131,6 @@ router.post("/register", async (req: Request, res: Response) => {
       success: true,
       message: "User created successfully. Please check your email to verify your account.",
       user: result.user,
-      verificationUrl,
     })
   } catch (error) {
     log.error("Register error", error)
@@ -404,9 +417,9 @@ router.post("/verify-email", async (req: Request, res: Response) => {
 
   const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`
 
-  // Email delivery is handled client-side via EmailJS; return the URL so the
-  // client can send it to the user.
-  return res.json({ success: true, message: "Verification email sent", verificationUrl })
+  await sendVerificationEmail(email.toLowerCase(), user.firstName || "there", verificationUrl)
+
+  return res.json({ success: true, message: "Verification email sent" })
 })
 
 // POST /api/auth/reset-password

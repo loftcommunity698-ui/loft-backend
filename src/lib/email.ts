@@ -124,4 +124,43 @@ export const emailTemplates = {
       </html>
     `,
   }),
+
+  emailVerification: (to: string, firstName: string, verificationUrl: string) => ({
+    to,
+    subject: "Welcome to LoftCommunity — verify your email",
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #10b981;">Welcome to LoftCommunity!</h1>
+          <p>Hi ${escapeHtml(firstName)},</p>
+          <p>Your LoftCommunity account was created successfully. Click the button below to confirm your email address and start exploring job opportunities.</p>
+          <a href="${verificationUrl}" 
+             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
+            Verify Email
+          </a>
+          <p style="margin-top: 24px; color: #888; font-size: 12px;">You received this email because you created an account on LoftCommunity.</p>
+        </body>
+      </html>
+    `,
+  }),
+
+  passwordReset: (to: string, resetUrl: string) => ({
+    to,
+    subject: "Reset your LoftCommunity password",
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #10b981;">Reset Your Password</h1>
+          <p>We received a request to reset your LoftCommunity password. Click the button below to choose a new password.</p>
+          <a href="${resetUrl}" 
+             style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
+            Reset Password
+          </a>
+          <p style="margin-top: 24px; color: #888; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+        </body>
+      </html>
+    `,
+  }),
 }
