@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer"
+import nodemailer, { type TransportOptions } from "nodemailer"
 import emailjs from "@emailjs/nodejs"
 import { lookup as dnsLookup } from "node:dns"
 import { db } from "./db"
@@ -19,12 +19,12 @@ const transporter = smtpReady
       port: env.smtpPort,
       secure: env.smtpPort === 465,
       auth: { user: env.smtpUser, pass: env.smtpPass },
-      lookup: (hostname: string, opts: import("node:dns").LookupOptions, cb: Parameters<typeof dnsLookup>[2]) =>
+      lookup: (hostname: string, opts: import("node:dns").LookupOptions, cb: (err: Error | null, address: string | import("node:dns").LookupAddress[], family: number) => void) =>
         dnsLookup(hostname, { ...opts, family: 4 }, cb),
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
-    })
+    } as unknown as TransportOptions)
   : null
 
 const emailJsReady = Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
