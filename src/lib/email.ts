@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer"
 import emailjs from "@emailjs/nodejs"
+import { lookup as dnsLookup } from "node:dns"
 import { db } from "./db"
 import { createLogger } from "./logger"
 import env from "../config/env"
@@ -18,13 +19,15 @@ const transporter = smtpReady
       port: env.smtpPort,
       secure: env.smtpPort === 465,
       auth: { user: env.smtpUser, pass: env.smtpPass },
+      lookup: (hostname: string, opts: import("node:dns").LookupOptions, cb: Parameters<typeof dnsLookup>[2]) =>
+        dnsLookup(hostname, { ...opts, family: 4 }, cb),
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
     })
   : null
 
-const emailJsReady = !smtpReady && Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
+const emailJsReady = Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
 if (emailJsReady) {
   emailjs.init({
     publicKey: env.emailjsPublicKey,
@@ -87,7 +90,10 @@ async function send(options: EmailOptions) {
         ms: Date.now() - started,
         error: (error as { response?: string; responseCode?: number; code?: string; message?: string }).response || (error as Error).message,
       })
-      return { success: false, error }
+      if (!emailJsReady) {
+        return { success: false, error }
+      }
+      log.warn("SMTP send failed, falling back to EmailJS", { to: options.to })
     }
   }
 
