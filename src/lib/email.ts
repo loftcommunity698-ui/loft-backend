@@ -1,3 +1,4 @@
+import nodemailer from "nodemailer"
 import emailjs from "@emailjs/nodejs"
 import { db } from "./db"
 import { createLogger } from "./logger"
@@ -9,7 +10,18 @@ export { EmailRenderError } from "./email-html"
 
 const log = createLogger("email")
 
-const emailJsReady = Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
+const smtpReady = Boolean(env.smtpUser && env.smtpPass)
+
+const transporter = smtpReady
+  ? nodemailer.createTransport({
+      host: env.smtpHost,
+      port: env.smtpPort,
+      secure: env.smtpPort === 465,
+      auth: { user: env.smtpUser, pass: env.smtpPass },
+    })
+  : null
+
+const emailJsReady = !smtpReady && Boolean(env.emailjsPublicKey && env.emailjsServiceId && env.emailjsTemplateId)
 if (emailJsReady) {
   emailjs.init({
     publicKey: env.emailjsPublicKey,
@@ -39,9 +51,26 @@ interface EmailOptions {
 }
 
 async function send(options: EmailOptions) {
+  if (smtpReady && transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `${env.mailFromName} <${env.mailFrom}>`,
+        to: options.to,
+        replyTo: env.mailFrom,
+        subject: options.subject,
+        text: options.message,
+        html: options.html,
+      })
+      return { success: true, info }
+    } catch (error) {
+      log.error("SMTP email error", error)
+      return { success: false, error }
+    }
+  }
+
   if (!emailJsReady) {
-    log.warn("EmailJS not configured, skipping email", { to: options.to, subject: options.subject })
-    return { success: false, error: "EmailJS not configured" }
+    log.warn("Email not configured, skipping email", { to: options.to, subject: options.subject })
+    return { success: false, error: "Email not configured" }
   }
 
   try {

@@ -7,6 +7,7 @@ import { listJobs, listTags, getJobFacets } from "../services/jobs"
 import { success, paginated, created, noContent, failure } from "../lib/response"
 import { sendEmail, shouldSendEmail } from "../lib/email"
 import { sendEvent } from "../lib/sse"
+import env from "../config/env"
 
 const router = Router()
 const log = createLogger("jobs")
@@ -236,6 +237,25 @@ router.post("/:id/apply", optionalAuth, async (req: AuthenticatedRequest, res: R
     const employerShouldNotify = await shouldSendEmail(job.employerId, "applicationUpdates")
     if (employerShouldNotify) {
       await sendEmail({ type: "new_applicant", recipient: application.job.employer.email, data: { jobTitle: job.title, candidateName: applicantName } })
+    }
+
+    const applicationUrl = `${env.frontendUrl}/applications/${application.id}`
+    const candidateEmail = application.contactEmail || application.guestEmail || application.user?.email || undefined
+    try {
+      await sendEmail({
+        type: "new_applicant",
+        recipient: env.supportEmail,
+        data: {
+          jobTitle: job.title,
+          candidateName: applicantName,
+          companyName: application.job.company || job.company || "LoftCommunity",
+          candidateEmail,
+          resumeUrl: application.resumeUrl || undefined,
+          applicationUrl,
+        },
+      })
+    } catch (sendErr) {
+      log.error("Support inbox application notification error", sendErr)
     }
 
     return res.status(201).json({ success: true, application: { id: application.id, status: application.status, appliedAt: application.appliedAt } })

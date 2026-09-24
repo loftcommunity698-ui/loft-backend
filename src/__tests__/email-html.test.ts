@@ -100,6 +100,26 @@ describe("renderEmail", () => {
     expect(html).toContain("Jane Doe")
   })
 
+  it("renders new_applicant with support-inbox application detail", () => {
+    const rendered = renderEmail("new_applicant", {
+      jobTitle: "Senior Product Engineer",
+      candidateName: "Jane Doe",
+      candidateEmail: "jane@acme.com",
+      companyName: "Acme Inc",
+      resumeUrl: `${HTTPS}/resume.pdf`,
+      applicationUrl: `${HTTPS}/applications/7`,
+    })
+    expect(rendered.subject).toBe("New Applicant for Senior Product Engineer")
+    const { html } = rendered
+    sharedHtmlAssertions(html)
+    expect(html).toContain("jane@acme.com")
+    expect(html).toContain("Acme Inc")
+    expect(html).toMatch(/View resume/)
+    expect(html).toContain("/resume.pdf")
+    expect(html).toContain("applications/7")
+    expect(html).toMatch(/Review application/)
+  })
+
   it("renders application_confirmation pointing at /applications", () => {
     const rendered = renderEmail("application_confirmation", {
       jobTitle: "Senior Product Engineer",

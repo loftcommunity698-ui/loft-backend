@@ -29,6 +29,10 @@ export interface NewApplicantData {
   jobTitle: string
   candidateName: string
   employerUrl?: string
+  candidateEmail?: string
+  companyName?: string
+  resumeUrl?: string
+  applicationUrl?: string
 }
 
 export interface ContactData {
@@ -142,6 +146,13 @@ function detailRow(label: string, value: string): string {
   return `  <tr>
     <td class="text-muted" align="left" style="padding:4px 0; font-size:14px; line-height:20px; color:#6b7280;">${escText(label)}</td>
     <td class="text-body" align="right" style="padding:4px 0; font-size:14px; line-height:20px; color:#1a1a2e;">${escText(value)}</td>
+  </tr>`
+}
+
+function detailRowHtml(label: string, innerHtml: string): string {
+  return `  <tr>
+    <td class="text-muted" align="left" style="padding:4px 0; font-size:14px; line-height:20px; color:#6b7280;">${escText(label)}</td>
+    <td class="text-body" align="right" style="padding:4px 0; font-size:14px; line-height:20px; color:#1a1a2e;">${innerHtml}</td>
   </tr>`
 }
 
@@ -342,6 +353,25 @@ function renderNewApplicant(data: NewApplicantData): RenderedEmail {
   const employerUrl = data.employerUrl || `${frontendUrl}/employer/dashboard`
   assertSafeCta(employerUrl)
 
+  const detailRows: Array<string> = [
+    detailRow("Position", jobTitle),
+    detailRow("Applicant", candidateName),
+  ]
+  if (data.companyName) detailRows.push(detailRow("Company", data.companyName))
+  if (data.candidateEmail) detailRows.push(detailRow("Contact email", data.candidateEmail))
+  if (data.resumeUrl) {
+    assertSafeCta(data.resumeUrl)
+    detailRows.push(detailRowHtml("Resume", link(data.resumeUrl, "View resume")))
+  }
+
+  let cta = ctaButton("Review their profile", employerUrl)
+  let fallback = mutedLine(`If the button doesn't work, use this link: ${link(employerUrl)}`)
+  if (data.applicationUrl) {
+    assertSafeCta(data.applicationUrl)
+    cta = ctaButton("Review application", data.applicationUrl)
+    fallback = mutedLine(`If the button doesn't work, use this link: ${link(data.applicationUrl)}`)
+  }
+
   return toRendered({
     subject: `New Applicant for ${jobTitle}`,
     message: `${candidateName} has applied for ${jobTitle}. Review their profile: ${employerUrl}`,
@@ -350,12 +380,9 @@ function renderNewApplicant(data: NewApplicantData): RenderedEmail {
       h1("Hi,"),
       h2("New Applicant"),
       body(`${candidateName} has applied for ${jobTitle}.`),
-      detailTable([
-        ["Position", jobTitle],
-        ["Applicant", candidateName],
-      ]),
-      ctaButton("Review their profile", employerUrl),
-      mutedLine(`If the button doesn't work, use this link: ${link(employerUrl)}`),
+      `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:16px 0 0 0; width:100%;">\n${detailRows.join("\n")}\n</table>`,
+      cta,
+      fallback,
       signOff(),
     ].join("\n"),
   })
