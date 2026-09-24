@@ -241,7 +241,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
     if (application.userId && application.user) {
       const shouldNotify = await shouldSendEmail(application.userId, "applicationUpdates")
       if (shouldNotify) {
-        await sendEmail({ type: "status_update", recipient: application.user.email, data: { jobTitle: application.job.title, companyName, status: status.toLowerCase() } })
+        sendEmail({ type: "status_update", recipient: application.user.email, data: { jobTitle: application.job.title, companyName, status: status.toLowerCase() } }).catch((sendErr) => log.error("Application status email error", sendErr))
       }
     }
 

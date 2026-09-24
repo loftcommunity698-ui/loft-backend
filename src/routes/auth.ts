@@ -107,7 +107,7 @@ router.post("/register", async (req: Request, res: Response) => {
 
     const verificationUrl = `${env.frontendUrl}/verify-email?token=${verificationToken}`
 
-    await sendVerificationEmail(email.toLowerCase(), firstName, verificationUrl)
+    void sendVerificationEmail(email.toLowerCase(), firstName, verificationUrl)
 
     if (result.user?.clerkId) {
       await db.notification.create({
@@ -417,7 +417,7 @@ router.post("/verify-email", async (req: Request, res: Response) => {
 
   const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`
 
-  await sendVerificationEmail(email.toLowerCase(), user.firstName || "there", verificationUrl)
+  void sendVerificationEmail(email.toLowerCase(), user.firstName || "there", verificationUrl)
 
   return res.json({ success: true, message: "Verification email sent" })
 })

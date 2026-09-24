@@ -163,14 +163,7 @@ export async function requestPasswordReset(email: string): Promise<AuthResponse>
 
   const resetUrl = `${env.frontendUrl}/forgot-password?token=${token}`
 
-  try {
-    const emailResult = await sendEmail({ type: "password_reset", recipient: email.toLowerCase(), data: { firstName: user.firstName ?? undefined, resetUrl } })
-    if (!emailResult.success) {
-      log.error("Failed to send password reset email", { email })
-    }
-  } catch (error) {
-    log.error("Failed to send password reset email", error)
-  }
+  sendEmail({ type: "password_reset", recipient: email.toLowerCase(), data: { firstName: user.firstName ?? undefined, resetUrl } }).catch((error) => log.error("Failed to send password reset email", error))
 
   return {
     success: true,
