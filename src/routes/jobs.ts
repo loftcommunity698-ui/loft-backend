@@ -5,7 +5,7 @@ import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
 import { listJobs, listTags, getJobFacets } from "../services/jobs"
 import { success, paginated, created, noContent, failure } from "../lib/response"
-import { sendEmail, emailTemplates, shouldSendEmail } from "../lib/email"
+import { sendEmail, shouldSendEmail } from "../lib/email"
 import { sendEvent } from "../lib/sse"
 
 const router = Router()
@@ -235,7 +235,7 @@ router.post("/:id/apply", optionalAuth, async (req: AuthenticatedRequest, res: R
     // Applicant confirmation email is delivered client-side via EmailJS.
     const employerShouldNotify = await shouldSendEmail(job.employerId, "applicationUpdates")
     if (employerShouldNotify) {
-      await sendEmail(emailTemplates.newApplicant(job.title, applicantName, application.job.employer.email))
+      await sendEmail({ type: "new_applicant", recipient: application.job.employer.email, data: { jobTitle: job.title, candidateName: applicantName } })
     }
 
     return res.status(201).json({ success: true, application: { id: application.id, status: application.status, appliedAt: application.appliedAt } })

@@ -15,7 +15,7 @@ import {
   isValidEmail,
 } from "../lib/auth-service"
 import { createLogger } from "../lib/logger"
-import { sendEmail, emailTemplates } from "../lib/email"
+import { sendEmail } from "../lib/email"
 import env from "../config/env"
 import { failure } from "../lib/response"
 import type { AuthenticatedRequest, RegisterInput, LoginInput, OAuthInput } from "../types"
@@ -27,7 +27,7 @@ const REFRESH_TOKEN_DAYS = 7
 
 async function sendVerificationEmail(email: string, firstName: string, verificationUrl: string): Promise<void> {
   try {
-    const emailResult = await sendEmail(emailTemplates.emailVerification(email, firstName, verificationUrl))
+    const emailResult = await sendEmail({ type: "welcome", recipient: email, data: { firstName, verificationUrl } })
     if (!emailResult.success) {
       log.error("Failed to send verification email", { email })
     }

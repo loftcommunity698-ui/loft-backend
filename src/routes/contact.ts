@@ -28,19 +28,7 @@ router.post("/", async (req: Request, res: Response) => {
       return failure(res, "Invalid email address", 400)
     }
 
-    const result = await sendEmail({
-      to: env.supportEmail,
-      subject: `[Contact Support] ${subject} - from ${name}`,
-      message: `
-Contact Support Request
-
-From: ${name}
-Email: ${email}
-Subject: ${subject}
-
-${message}
-      `.trim(),
-    })
+    const result = await sendEmail({ type: "contact", recipient: env.supportEmail, data: { name, email, subject, message } })
 
     if (result.success) {
       return res.json({ success: true, message: "Message sent successfully" })

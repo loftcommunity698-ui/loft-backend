@@ -2,6 +2,10 @@ import emailjs from "@emailjs/nodejs"
 import { db } from "./db"
 import { createLogger } from "./logger"
 import env from "../config/env"
+import { renderEmail, type EmailData, type EmailType, type EmailRenderError } from "./email-html"
+
+export type { EmailData, EmailType } from "./email-html"
+export { EmailRenderError } from "./email-html"
 
 const log = createLogger("email")
 
@@ -31,22 +35,24 @@ interface EmailOptions {
   to: string
   subject: string
   message: string
+  html?: string
 }
 
-export async function sendEmail({ to, subject, message }: EmailOptions) {
+async function send(options: EmailOptions) {
   if (!emailJsReady) {
-    log.warn("EmailJS not configured, skipping email", { to, subject })
+    log.warn("EmailJS not configured, skipping email", { to: options.to, subject: options.subject })
     return { success: false, error: "EmailJS not configured" }
   }
 
   try {
     const data = await emailjs.send(env.emailjsServiceId, env.emailjsTemplateId, {
-      to_email: to,
+      to_email: options.to,
       from_name: env.emailjsFromName,
       from_email: env.emailjsFromEmail,
       reply_to: env.emailjsFromEmail,
-      subject,
-      message,
+      subject: options.subject,
+      message: options.message,
+      ...(options.html ? { html: options.html } : {}),
     })
     if (data.status === 200) {
       return { success: true, data }
@@ -58,36 +64,23 @@ export async function sendEmail({ to, subject, message }: EmailOptions) {
   }
 }
 
-const baseUrl = env.frontendUrl || "http://localhost:3000"
+export interface EmailSendInput {
+  type: EmailType
+  recipient: string
+  data: EmailData[EmailType]
+}
 
-export const emailTemplates = {
-  applicationSubmitted: (jobTitle: string, companyName: string, to: string) => ({
-    to,
-    subject: `Application Submitted - ${jobTitle}`,
-    message: `Your application for ${jobTitle} at ${companyName} has been submitted and will be reviewed. Watch your inbox for status updates. Track it: ${baseUrl}/dashboard/applications`,
-  }),
-
-  statusUpdate: (jobTitle: string, companyName: string, status: string, to: string) => ({
-    to,
-    subject: `Application Status Update - ${jobTitle}`,
-    message: `Your application for ${jobTitle} at ${companyName} is now ${status}. Track it: ${baseUrl}/dashboard/applications`,
-  }),
-
-  newApplicant: (jobTitle: string, candidateName: string, to: string) => ({
-    to,
-    subject: `New Applicant for ${jobTitle}`,
-    message: `${candidateName} has applied for ${jobTitle}. Review their profile: ${baseUrl}/employer/dashboard`,
-  }),
-
-  emailVerification: (to: string, firstName: string, verificationUrl: string) => ({
-    to,
-    subject: "Welcome to LoftCommunity — verify your email",
-    message: `Welcome to LoftCommunity, ${firstName}! Your account has been created. Confirm your email by opening this link: ${verificationUrl} (expires in 24 hours).`,
-  }),
-
-  passwordReset: (to: string, resetUrl: string) => ({
-    to,
-    subject: "Reset your LoftCommunity password",
-    message: `We received a request to reset your password. Open this link to choose a new one: ${resetUrl} (expires in 1 hour). If you didn't request this, ignore this email.`,
-  }),
+export async function sendEmail({ type, recipient, data }: EmailSendInput) {
+  try {
+    const rendered = renderEmail(type, data)
+    return await send({
+      to: recipient,
+      subject: rendered.subject,
+      message: rendered.message,
+      html: rendered.html,
+    })
+  } catch (error) {
+    log.error("Email render error", error)
+    return { success: false, error }
+  }
 }

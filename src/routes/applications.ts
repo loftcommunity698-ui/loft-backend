@@ -1,7 +1,7 @@
 import { Router, Response } from "express"
 import { db } from "../lib/db"
 import { requireAuth } from "../middleware/auth"
-import { sendEmail, emailTemplates, shouldSendEmail } from "../lib/email"
+import { sendEmail, shouldSendEmail } from "../lib/email"
 import { createLogger } from "../lib/logger"
 import type { AuthenticatedRequest } from "../types"
 import { failure } from "../lib/response"
@@ -241,7 +241,7 @@ router.patch("/:id/status", requireAuth, async (req: AuthenticatedRequest, res: 
     if (application.userId && application.user) {
       const shouldNotify = await shouldSendEmail(application.userId, "applicationUpdates")
       if (shouldNotify) {
-        await sendEmail(emailTemplates.statusUpdate(application.job.title, companyName, status.toLowerCase(), application.user.email))
+        await sendEmail({ type: "status_update", recipient: application.user.email, data: { jobTitle: application.job.title, companyName, status: status.toLowerCase() } })
       }
     }
 
