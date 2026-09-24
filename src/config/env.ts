@@ -18,6 +18,7 @@ const env = {
   smtpPass: process.env.SMTP_PASS || "",
   mailFrom: process.env.MAIL_FROM || process.env.SMTP_USER || "",
   mailFromName: process.env.MAIL_FROM_NAME || "LoftCommunity",
+  debugKey: process.env.DEBUG_KEY || "",
   supportEmail: process.env.SUPPORT_EMAIL || "support@loftcommunity.com",
   stripeSecret: process.env.STRIPE_SECRET || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",

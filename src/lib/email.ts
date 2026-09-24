@@ -53,8 +53,20 @@ interface EmailOptions {
   html?: string
 }
 
+const emailDebugLog: { at: string; type: string; to: string; ok: boolean; ms: number; error?: string }[] = []
+
+function recordEmailAttempt(entry: { type: string; to: string; ok: boolean; ms: number; error?: string }) {
+  emailDebugLog.push({ at: new Date().toISOString(), ...entry })
+  if (emailDebugLog.length > 50) emailDebugLog.shift()
+}
+
+export function getEmailDebugLog() {
+  return [...emailDebugLog].reverse()
+}
+
 async function send(options: EmailOptions) {
   if (smtpReady && transporter) {
+    const started = Date.now()
     try {
       const info = await transporter.sendMail({
         from: `${env.mailFromName} <${env.mailFrom}>`,
@@ -64,18 +76,28 @@ async function send(options: EmailOptions) {
         text: options.message,
         html: options.html,
       })
+      recordEmailAttempt({ type: "smtp", to: options.to, ok: true, ms: Date.now() - started, error: info.messageId })
       return { success: true, info }
     } catch (error) {
       log.error("SMTP email error", error)
+      recordEmailAttempt({
+        type: "smtp",
+        to: options.to,
+        ok: false,
+        ms: Date.now() - started,
+        error: (error as { response?: string; responseCode?: number; code?: string; message?: string }).response || (error as Error).message,
+      })
       return { success: false, error }
     }
   }
 
   if (!emailJsReady) {
     log.warn("Email not configured, skipping email", { to: options.to, subject: options.subject })
+    recordEmailAttempt({ type: "skip", to: options.to, ok: false, ms: 0, error: "Email not configured" })
     return { success: false, error: "Email not configured" }
   }
 
+  const started = Date.now()
   try {
     const data = await emailjs.send(env.emailjsServiceId, env.emailjsTemplateId, {
       to_email: options.to,
@@ -87,11 +109,20 @@ async function send(options: EmailOptions) {
       ...(options.html ? { html: options.html } : {}),
     })
     if (data.status === 200) {
+      recordEmailAttempt({ type: "emailjs", to: options.to, ok: true, ms: Date.now() - started })
       return { success: true, data }
     }
+    recordEmailAttempt({ type: "emailjs", to: options.to, ok: false, ms: Date.now() - started, error: `status ${data.status}` })
     return { success: false, error: data }
   } catch (error) {
     log.error("Email error", error)
+    recordEmailAttempt({
+      type: "emailjs",
+      to: options.to,
+      ok: false,
+      ms: Date.now() - started,
+      error: (error as { message?: string }).message || String(error),
+    })
     return { success: false, error }
   }
 }

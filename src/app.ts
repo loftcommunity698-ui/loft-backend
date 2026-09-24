@@ -24,6 +24,7 @@ import uploadthingRoutes from "./routes/uploadthing"
 import sseRoutes from "./routes/sse"
 import statsRoutes from "./routes/stats"
 import testRoutes from "./routes/test"
+import internalRoutes from "./routes/internal"
 
 const app = express()
 
@@ -51,6 +52,7 @@ app.use("/api/contact", contactRoutes)
 app.use("/api/uploadthing", uploadthingRoutes)
 app.use("/api/sse", sseRoutes)
 app.use("/api/stats", statsRoutes)
+app.use("/api/internal", internalRoutes)
 
 if (env.isDev) {
   app.use("/api/test", testRoutes)
