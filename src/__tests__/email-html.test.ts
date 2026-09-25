@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { renderEmail, EmailRenderError, EMAIL_LOGO_URL } from "../lib/email-html"
+import { renderEmail, EmailRenderError, EMAIL_LOGO_URL, EMAIL_LOGO_CID } from "../lib/email-html"
 
 const HTTPS = "https://loft-frontend.onrender.com"
 
@@ -179,5 +179,19 @@ describe("renderEmail", () => {
     expect(() => renderEmail("welcome", { firstName: "Ada", verificationUrl: "http://evil.test/verify" })).toThrow(EmailRenderError)
     expect(() => renderEmail("welcome", { firstName: "Ada", verificationUrl: "javascript:alert(1)" })).toThrow(EmailRenderError)
     expect(() => renderEmail("status_update", { jobTitle: "x", companyName: "y", status: "z", applicationsUrl: "http://localhost:3000/applications" })).toThrow(EmailRenderError)
+  })
+
+  it("renders a cid: logo when logoSrc is passed (SMTP/EmailJS CID embed)", () => {
+    const rendered = renderEmail("new_applicant", {
+      jobTitle: "Senior Product Engineer",
+      candidateName: "Jane Doe",
+      candidateEmail: "jane@acme.com",
+      companyName: "Acme Inc",
+      resumeUrl: `${HTTPS}/resume.pdf`,
+      applicationUrl: `${HTTPS}/applications/7`,
+    }, `cid:${EMAIL_LOGO_CID}`)
+    expect(rendered.html).toMatch(/<img class="email-logo"[^>]*src="cid:email-logo\.png"/)
+    expect(rendered.html).toContain(`cid:${EMAIL_LOGO_CID}`)
+    expect(rendered.html).not.toContain(EMAIL_LOGO_URL)
   })
 })

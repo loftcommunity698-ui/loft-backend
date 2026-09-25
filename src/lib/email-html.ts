@@ -66,6 +66,7 @@ export interface RenderedEmail {
 }
 
 export const EMAIL_LOGO_URL = "https://loft-frontend.onrender.com/email-logo.png"
+export const EMAIL_LOGO_CID = "email-logo.png"
 
 export class EmailRenderError extends Error {
   constructor(message: string) {
@@ -178,7 +179,7 @@ function footerParagraph(): string {
   return `<p class="text-muted" style="margin:16px 0 0 0; padding:0; font-size:12px; line-height:18px; color:#6b7280;">&copy; ${new Date().getFullYear()} LoftCommunity. All rights reserved.</p>`
 }
 
-function renderShell(payload: { subject: string; preheader: string; bodyHtml: string }): string {
+function renderShell(payload: { subject: string; preheader: string; bodyHtml: string; logoSrc?: string }): string {
   const styles = `@media only screen and (max-width:600px) {
   .container { width:100% !important; padding-left:16px !important; padding-right:16px !important; }
   .email-logo { max-width:220px !important; height:auto !important; }
@@ -239,7 +240,7 @@ function renderShell(payload: { subject: string; preheader: string; bodyHtml: st
 <tr>
 <td class="header-bar" bgcolor="#1b161d" style="background-color:#1b161d; border-radius:8px 8px 0 0; padding:24px; text-align:center;">
 <a href="${escAttr(frontendUrl)}">
-<img class="email-logo" src="${EMAIL_LOGO_URL}" alt="LoftCommunity" width="300" height="192" style="display:block; width:300px; max-width:300px; height:auto; border:0; margin:0 auto;">
+<img class="email-logo" src="${escAttr(payload.logoSrc ?? EMAIL_LOGO_URL)}" alt="LoftCommunity" width="300" height="192" style="display:block; width:300px; max-width:300px; height:auto; border:0; margin:0 auto;">
 </a>
 </td>
 </tr>
@@ -271,15 +272,15 @@ interface EmailSpec {
   bodyHtml: string
 }
 
-function toRendered(spec: EmailSpec): RenderedEmail {
+function toRendered(spec: EmailSpec, logoSrc?: string): RenderedEmail {
   return {
     subject: spec.subject,
     message: spec.message,
-    html: renderShell({ subject: spec.subject, preheader: spec.preheader, bodyHtml: spec.bodyHtml }),
+    html: renderShell({ subject: spec.subject, preheader: spec.preheader, bodyHtml: spec.bodyHtml, ...(logoSrc ? { logoSrc } : {}) }),
   }
 }
 
-function renderWelcome(data: WelcomeData): RenderedEmail {
+function renderWelcome(data: WelcomeData, logoSrc?: string): RenderedEmail {
   const firstName = requireString(data.firstName, "firstName")
   const verificationUrl = requireString(data.verificationUrl, "verificationUrl")
   assertSafeCta(verificationUrl)
@@ -296,10 +297,10 @@ function renderWelcome(data: WelcomeData): RenderedEmail {
       mutedLine(`If the button doesn't work, use this link: ${link(verificationUrl)}`),
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-function renderPasswordReset(data: PasswordResetData): RenderedEmail {
+function renderPasswordReset(data: PasswordResetData, logoSrc?: string): RenderedEmail {
   const resetUrl = requireString(data.resetUrl, "resetUrl")
   assertSafeCta(resetUrl)
   const firstName = data.firstName?.trim() || "there"
@@ -317,10 +318,10 @@ function renderPasswordReset(data: PasswordResetData): RenderedEmail {
       mutedLine(escText("If you didn't request this, ignore this email.")),
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-function renderStatusUpdate(data: StatusUpdateData): RenderedEmail {
+function renderStatusUpdate(data: StatusUpdateData, logoSrc?: string): RenderedEmail {
   const jobTitle = requireString(data.jobTitle, "jobTitle")
   const companyName = requireString(data.companyName, "companyName")
   const status = requireString(data.status, "status")
@@ -344,10 +345,10 @@ function renderStatusUpdate(data: StatusUpdateData): RenderedEmail {
       mutedLine(`If the button doesn't work, use this link: ${link(applicationsUrl)}`),
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-function renderNewApplicant(data: NewApplicantData): RenderedEmail {
+function renderNewApplicant(data: NewApplicantData, logoSrc?: string): RenderedEmail {
   const jobTitle = requireString(data.jobTitle, "jobTitle")
   const candidateName = requireString(data.candidateName, "candidateName")
   const employerUrl = data.employerUrl || `${frontendUrl}/employer/dashboard`
@@ -385,10 +386,10 @@ function renderNewApplicant(data: NewApplicantData): RenderedEmail {
       fallback,
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-function renderApplicationConfirmation(data: ApplicationConfirmationData): RenderedEmail {
+function renderApplicationConfirmation(data: ApplicationConfirmationData, logoSrc?: string): RenderedEmail {
   const jobTitle = requireString(data.jobTitle, "jobTitle")
   const companyName = requireString(data.companyName, "companyName")
   const applicationsUrl = data.applicationsUrl || `${frontendUrl}/applications`
@@ -406,10 +407,10 @@ function renderApplicationConfirmation(data: ApplicationConfirmationData): Rende
       mutedLine(`If the button doesn't work, use this link: ${link(applicationsUrl)}`),
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-function renderContact(data: ContactData): RenderedEmail {
+function renderContact(data: ContactData, logoSrc?: string): RenderedEmail {
   const name = requireString(data.name, "name")
   const email = requireString(data.email, "email")
   const subject = requireString(data.subject, "subject")
@@ -439,29 +440,29 @@ function renderContact(data: ContactData): RenderedEmail {
       mutedLine(`Or use the contact form: ${link(contactUrl)}`),
       signOff(),
     ].join("\n"),
-  })
+  }, logoSrc)
 }
 
-export function renderEmail(type: EmailType, data: EmailData[EmailType]): RenderedEmail
-export function renderEmail(type: "welcome", data: WelcomeData): RenderedEmail
-export function renderEmail(type: "password_reset", data: PasswordResetData): RenderedEmail
-export function renderEmail(type: "status_update", data: StatusUpdateData): RenderedEmail
-export function renderEmail(type: "new_applicant", data: NewApplicantData): RenderedEmail
-export function renderEmail(type: "contact", data: ContactData): RenderedEmail
-export function renderEmail(type: "application_confirmation", data: ApplicationConfirmationData): RenderedEmail
-export function renderEmail(type: EmailType, data: EmailData[EmailType]): RenderedEmail {
+export function renderEmail(type: EmailType, data: EmailData[EmailType], logoSrc?: string): RenderedEmail
+export function renderEmail(type: "welcome", data: WelcomeData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: "password_reset", data: PasswordResetData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: "status_update", data: StatusUpdateData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: "new_applicant", data: NewApplicantData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: "contact", data: ContactData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: "application_confirmation", data: ApplicationConfirmationData, logoSrc?: string): RenderedEmail
+export function renderEmail(type: EmailType, data: EmailData[EmailType], logoSrc?: string): RenderedEmail {
   switch (type) {
     case "welcome":
-      return renderWelcome(data as WelcomeData)
+      return renderWelcome(data as WelcomeData, logoSrc)
     case "password_reset":
-      return renderPasswordReset(data as PasswordResetData)
+      return renderPasswordReset(data as PasswordResetData, logoSrc)
     case "status_update":
-      return renderStatusUpdate(data as StatusUpdateData)
+      return renderStatusUpdate(data as StatusUpdateData, logoSrc)
     case "new_applicant":
-      return renderNewApplicant(data as NewApplicantData)
+      return renderNewApplicant(data as NewApplicantData, logoSrc)
     case "contact":
-      return renderContact(data as ContactData)
+      return renderContact(data as ContactData, logoSrc)
     case "application_confirmation":
-      return renderApplicationConfirmation(data as ApplicationConfirmationData)
+      return renderApplicationConfirmation(data as ApplicationConfirmationData, logoSrc)
   }
 }

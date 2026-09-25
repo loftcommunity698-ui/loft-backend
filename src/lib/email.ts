@@ -1,10 +1,12 @@
 import nodemailer, { type TransportOptions } from "nodemailer"
 import emailjs from "@emailjs/nodejs"
 import { lookup as dnsLookup } from "node:dns"
+import { existsSync } from "node:fs"
+import path from "node:path"
 import { db } from "./db"
 import { createLogger } from "./logger"
 import env from "../config/env"
-import { renderEmail, type EmailData, type EmailType, type EmailRenderError } from "./email-html"
+import { renderEmail, EMAIL_LOGO_CID, type EmailData, type EmailType, type EmailRenderError } from "./email-html"
 
 export type { EmailData, EmailType } from "./email-html"
 export { EmailRenderError } from "./email-html"
@@ -21,9 +23,9 @@ const transporter = smtpReady
       auth: { user: env.smtpUser, pass: env.smtpPass },
       lookup: (hostname: string, opts: import("node:dns").LookupOptions, cb: (err: Error | null, address: string | import("node:dns").LookupAddress[], family: number) => void) =>
         dnsLookup(hostname, { ...opts, family: 4 }, cb),
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 12000,
     } as unknown as TransportOptions)
   : null
 
@@ -63,12 +65,23 @@ function recordEmailAttempt(entry: { type: string; to: string; ok: boolean; ms: 
   if (emailDebugLog.length > 50) emailDebugLog.shift()
 }
 
+const LOGO_SRC_CID = `cid:${EMAIL_LOGO_CID}`
+const EMAIL_LOGO_PATH = path.join(process.cwd(), "assets", EMAIL_LOGO_CID)
+const logoAttachments = existsSync(EMAIL_LOGO_PATH)
+  ? [{ filename: EMAIL_LOGO_CID, path: EMAIL_LOGO_PATH, cid: EMAIL_LOGO_CID }]
+  : []
+
+const SMTP_CIRCUIT_LATCH_MS = 5 * 60 * 1000
+let smtpFailures = 0
+let smtpLatchedUntil = 0
+
 export function getEmailDebugLog() {
   return [...emailDebugLog].reverse()
 }
 
 async function send(options: EmailOptions) {
-  if (smtpReady && transporter) {
+  const smtpLatched = emailJsReady && Date.now() < smtpLatchedUntil
+  if (smtpReady && transporter && !smtpLatched) {
     const started = Date.now()
     try {
       const info = await transporter.sendMail({
@@ -78,10 +91,18 @@ async function send(options: EmailOptions) {
         subject: options.subject,
         text: options.message,
         html: options.html,
+        ...(logoAttachments.length ? { attachments: logoAttachments } : {}),
       })
+      smtpFailures = 0
+      smtpLatchedUntil = 0
       recordEmailAttempt({ type: "smtp", to: options.to, ok: true, ms: Date.now() - started, error: info.messageId })
       return { success: true, info }
     } catch (error) {
+      smtpFailures += 1
+      if (!smtpLatchedUntil && smtpFailures >= 2) {
+        smtpLatchedUntil = Date.now() + SMTP_CIRCUIT_LATCH_MS
+        log.warn(`SMTP circuit opened for ${SMTP_CIRCUIT_LATCH_MS / 1000}s after ${smtpFailures} consecutive failures`)
+      }
       log.error("SMTP email error", error)
       recordEmailAttempt({
         type: "smtp",
@@ -95,6 +116,14 @@ async function send(options: EmailOptions) {
       }
       log.warn("SMTP send failed, falling back to EmailJS", { to: options.to })
     }
+  } else if (smtpReady && transporter && smtpLatched) {
+    recordEmailAttempt({
+      type: "smtp",
+      to: options.to,
+      ok: false,
+      ms: 0,
+      error: `circuit open, re-probing at ${new Date(smtpLatchedUntil).toISOString()}`,
+    })
   }
 
   if (!emailJsReady) {
@@ -141,7 +170,7 @@ export interface EmailSendInput {
 
 export async function sendEmail({ type, recipient, data }: EmailSendInput) {
   try {
-    const rendered = renderEmail(type, data)
+    const rendered = renderEmail(type, data, LOGO_SRC_CID)
     return await send({
       to: recipient,
       subject: rendered.subject,
